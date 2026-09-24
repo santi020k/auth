@@ -27,8 +27,9 @@ npm requires a package to exist before a trusted publisher can be attached. Afte
 `private: true` in the release pull request and perform the initial scoped public publication manually with 2FA:
 
 ```sh
-cd packages/auth-cloudflare
-npm publish --access public
+git switch main
+git pull --ff-only
+pnpm --dir packages/auth-cloudflare publish --access public
 ```
 
 That manual exception is for the initial publication only. Immediately afterward, configure npm trusted publishing for:

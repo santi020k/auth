@@ -50,9 +50,6 @@ jobs:
           node-version: 22.23.1
           registry-url: https://registry.npmjs.org
 
-      - name: Install OIDC-capable npm
-        run: npm install --global npm@12.1.0
-
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @santi020k/auth-website exec playwright install --with-deps chromium
       - run: pnpm verify
@@ -72,6 +69,7 @@ jobs:
           private_package=$(node -p "Boolean(require('./packages/auth-cloudflare/package.json').private)")
           publish_access=$(node -p "require('./packages/auth-cloudflare/package.json').publishConfig?.access ?? ''")
           expected_branch="release/v${version}"
+          pack_destination="$RUNNER_TEMP/auth-package"
           pack_metadata="$RUNNER_TEMP/auth-package-pack.json"
 
           if [[ "$private_package" == "true" ]]; then
@@ -96,13 +94,16 @@ jobs:
             exit 1
           fi
 
-          (
-            cd packages/auth-cloudflare
-            npm pack --dry-run --json
-          ) > "$pack_metadata"
-          local_integrity=$(node -p \
-            "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))[0].integrity" \
+          mkdir -p "$pack_destination"
+          pnpm --dir packages/auth-cloudflare pack \
+            --pack-destination "$pack_destination" \
+            --json > "$pack_metadata"
+          package_tarball=$(node -p \
+            "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).filename" \
             "$pack_metadata")
+          local_integrity=$(node -e \
+            "const { createHash } = require('node:crypto'); const { readFileSync } = require('node:fs'); process.stdout.write('sha512-' + createHash('sha512').update(readFileSync(process.argv[1])).digest('base64'));" \
+            "$package_tarball")
 
           if npm view "$package_name@$version" version >/dev/null 2>&1; then
             published_integrity=$(npm view "$package_name@$version" dist.integrity)
@@ -121,7 +122,7 @@ jobs:
       - name: Publish package with npm trusted publishing
         if: steps.release.outputs.publish == 'true'
         working-directory: packages/auth-cloudflare
-        run: npm publish --access public
+        run: pnpm publish --access public --no-git-checks
 
       - name: Verify npm publication
         shell: bash
