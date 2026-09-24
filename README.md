@@ -16,7 +16,13 @@ Sharing this package never creates a shared account system.
 - `apps/website`: Astro and Lumen documentation site prepared for `auth.santi020k.com`.
 
 The package remains private while the playground and the first two consumers validate migrations, compatibility, and
-passkeys on their real origins. No consumer should replace an existing login system solely because the package builds.
+passkeys on their real origins. It is therefore not listed on npm yet, even though the future install command is already
+documented. No consumer should replace an existing login system solely because the package builds.
+
+- Website: [auth.santi020k.com](https://auth.santi020k.com)
+- Source: [github.com/santi020k/auth](https://github.com/santi020k/auth)
+- npm status: [`@santi020k/auth-cloudflare`](https://www.npmjs.com/package/@santi020k/auth-cloudflare) (unpublished
+  until the production-readiness gate passes)
 
 ## Develop
 
@@ -63,6 +69,9 @@ public or its GitHub plan supports Advanced Security for private repositories.
 See [production readiness](docs/production-readiness.md) for the exact evidence required before deploying the website or
 making the package public. A green local gate is necessary but does not prove a Cloudflare deployment, real email
 delivery, or passkeys on a consumer's production origin.
+
+See [package releases](docs/releasing.md) for Changesets, `release/v<semver>` pull requests, npm trusted publishing,
+immutable version tags, and initial-release requirements.
 
 ## Security boundary
 

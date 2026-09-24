@@ -31,6 +31,8 @@
     "lint:unused": "knip",
     "pre-commit": "lint-staged",
     "pre-push": "pnpm run verify",
+    "release:version": "changeset version && pnpm install --lockfile-only",
+    "release:pack": "pnpm --filter @santi020k/auth-cloudflare exec npm pack --dry-run",
     "test": "pnpm --recursive --if-present run test",
     "test:e2e": "pnpm --filter @santi020k/auth-website run test:e2e",
     "typecheck": "pnpm --recursive --if-present run typecheck",

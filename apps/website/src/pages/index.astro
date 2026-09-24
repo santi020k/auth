@@ -1,10 +1,14 @@
 ---
 import { Badge, ButtonLink, Card, CodeTabs } from "@santi020k/lumen-astro";
 
+import packageManifest from "../../../../packages/auth-cloudflare/package.json";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
 const description =
   "Owner-only email-code and passkey authentication policy for Hono applications running on Cloudflare Workers and D1.";
+const npmPackageURL = "https://www.npmjs.com/package/@santi020k/auth-cloudflare";
+const packageVersion = packageManifest.version;
+const repositoryURL = "https://github.com/santi020k/auth";
 
 const installCommands = [
   {
@@ -66,9 +70,15 @@ const boundaries = [
 <BaseLayout description={description} title="santi020k auth">
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero-copy">
-      <Badge variant="warning">Private production candidate</Badge>
-      <h1 id="hero-title">Share authentication policy. Never share identity state.</h1>
-      <p>
+      <div class="hero-meta" aria-label="Package status">
+        <Badge variant="warning">Private preview</Badge>
+        <span>v{packageVersion}</span>
+        <span>Cloudflare Workers + D1</span>
+      </div>
+      <h1 id="hero-title">
+        Share authentication policy. <span>Never share identity state.</span>
+      </h1>
+      <p class="hero-summary">
         A focused email-code and passkey foundation for Santiago-owned Cloudflare applications. Better Auth handles the
         protocol; each product keeps its own users, sessions, secrets, cookies, and recovery path.
       </p>
@@ -76,15 +86,31 @@ const boundaries = [
         <ButtonLink href="#integrate" showArrow>
           Review the integration
         </ButtonLink>
-        <ButtonLink href="#security" variant="secondary">
-          Inspect the security boundary
+        <ButtonLink href={repositoryURL} newTab variant="secondary" showArrow>
+          View the source
         </ButtonLink>
       </div>
+      <p class="package-availability" id="package-availability">
+        <strong>npm publication is gated.</strong> The registry listing appears after two consumer migrations and real
+        origin passkey checks are complete.
+        <a href={npmPackageURL} target="_blank" rel="noopener noreferrer" aria-describedby="package-availability">
+          npm package page
+        </a>
+      </p>
     </div>
-    <aside aria-label="Isolation contract">
+    <aside class="hero-contract" aria-label="Isolation contract">
       <Card class="boundary-card" glass="strong">
-        <p class="card-kicker">Isolation contract</p>
-        <dl>
+        <div class="package-card-header">
+          <p class="card-kicker">Reusable policy layer</p>
+          <Badge variant="outline">v{packageVersion}</Badge>
+        </div>
+        <p class="package-name">@santi020k/auth-cloudflare</p>
+        <div class="shared-policy">
+          <span>Shared safely</span>
+          <strong>Email code · passkeys · request boundary · rate limits</strong>
+        </div>
+        <p class="private-heading">Kept inside every consumer</p>
+        <dl class="boundary-list">
           {boundaries.map(([term, detail]) => (
             <div>
               <dt>{term}</dt>
@@ -92,6 +118,10 @@ const boundaries = [
             </div>
           ))}
         </dl>
+        <div class="contract-footer">
+          <span aria-hidden="true"></span>
+          No shared account system
+        </div>
       </Card>
     </aside>
   </section>
@@ -162,8 +192,12 @@ const boundaries = [
       <h2 id="integrate-title">Small API, deliberate cutover</h2>
       <p>
         The package stays private until two real consumers validate additive migrations and browser passkeys on their
-        final origins.
+        final origins. The commands below document the future public contract; they will resolve from npm only after the
+        first approved release.
       </p>
+      <a class="section-link" href={npmPackageURL} target="_blank" rel="noopener noreferrer">
+        Check npm publication status
+      </a>
     </div>
     <div class="code-grid">
       <div>
@@ -200,7 +234,8 @@ const boundaries = [
         <ul>
           <li>Strict TypeScript, ESLint, spelling, formatting, and unused-code checks</li>
           <li>D1 integration, package-contract, security, accessibility, and responsive browser tests</li>
-          <li>Quality-managed hooks, CI annotations, CodeQL, and dependency updates</li>
+          <li>Quality-managed hooks, Commitprompt enforcement, PR labels, CodeQL, and dependency updates</li>
+          <li>Release-branch npm OIDC automation with immutable version tags and GitHub Releases</li>
         </ul>
       </Card>
       <Card as="article" variant="muted">

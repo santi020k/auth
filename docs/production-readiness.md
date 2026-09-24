@@ -48,9 +48,10 @@ Keep `@santi020k/auth-cloudflare` private until at least two separate applicatio
 7. Cookies, secrets, databases, passkeys, relying-party IDs, and recovery policy remain isolated from every other
    consumer.
 
-After two consumers satisfy the gate, remove `private: true` deliberately, add a Changeset, verify package ownership and
-provenance, and prepare the initial release through the repository's approved release process. Subsequent releases must
-use a `release/v<semver>` pull request and GitHub Actions; do not publish later releases manually from a workstation.
+After two consumers satisfy the gate, remove `private: true` deliberately, add a Changeset, verify package ownership,
+and follow [package releases](releasing.md). The initial npm publication is the only manual publication because npm
+requires the package to exist before trusted publishing can be configured. Every subsequent release must use a
+`release/v<semver>` pull request and GitHub Actions; do not publish later releases manually from a workstation.
 
 ## Rollback and recovery
 

@@ -9,7 +9,15 @@ test("presents the complete authentication boundary", async ({ page }) => {
     "Share authentication policy. Never share identity state.",
   );
   await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
-  await expect(page.getByText("Private production candidate", { exact: true })).toBeVisible();
+  await expect(page.getByText("Private preview", { exact: true })).toBeVisible();
+  await expect(page.getByText("v0.1.0", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("npm publication is gated.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "npm package page" })).toHaveAttribute(
+    "href",
+    "https://www.npmjs.com/package/@santi020k/auth-cloudflare",
+  );
+  await expect(page.getByText("@santi020k/auth-cloudflare", { exact: true })).toBeVisible();
+  await expect(page.getByText("No shared account system", { exact: true })).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://auth.santi020k.com/");
 
   for (const id of ["architecture", "security", "integrate", "readiness"]) {

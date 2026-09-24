@@ -1,0 +1,163 @@
+name: Release package
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: auth-package-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify and publish
+    if: >-
+      ${{
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/main'
+        ) ||
+        (
+          github.event.pull_request.merged == true &&
+          startsWith(github.event.pull_request.head.ref, 'release/v')
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    steps:
+      - name: Check out merged main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || 'main' }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 12.6.0
+
+      - name: Set up Node.js and npm registry
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22.23.1
+          registry-url: https://registry.npmjs.org
+
+      - name: Install OIDC-capable npm
+        run: npm install --global npm@12.1.0
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @santi020k/auth-website exec playwright install --with-deps chromium
+      - run: pnpm verify
+      - run: pnpm release:pack
+
+      - id: release
+        name: Validate release metadata
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+
+          package_name=$(node -p "require('./packages/auth-cloudflare/package.json').name")
+          version=$(node -p "require('./packages/auth-cloudflare/package.json').version")
+          private_package=$(node -p "Boolean(require('./packages/auth-cloudflare/package.json').private)")
+          publish_access=$(node -p "require('./packages/auth-cloudflare/package.json').publishConfig?.access ?? ''")
+          expected_branch="release/v${version}"
+
+          if [[ "$private_package" == "true" ]]; then
+            echo "::error::The package is still private. Complete the two-consumer production gate before publishing."
+            exit 1
+          fi
+
+          if [[ "$publish_access" != "public" ]]; then
+            echo "::error::The scoped package must publish with public access."
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" == "pull_request" && "$RELEASE_BRANCH" != "$expected_branch" ]]; then
+            echo "::error::Expected release branch $expected_branch, received $RELEASE_BRANCH."
+            exit 1
+          fi
+
+          if npm view "$package_name" name >/dev/null 2>&1; then
+            echo "package_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::$package_name does not exist on npm yet. Its initial publication must be completed manually after the production-readiness gate, then this workflow can be rerun to reconcile tags and future OIDC releases."
+            exit 1
+          fi
+
+          if npm view "$package_name@$version" version >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "name=$package_name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish package with npm trusted publishing
+        if: steps.release.outputs.publish == 'true'
+        working-directory: packages/auth-cloudflare
+        run: npm publish --access public
+
+      - name: Verify npm publication
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.release.outputs.name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          published=$(npm view "$PACKAGE_NAME@$VERSION" version)
+          test "$published" = "$VERSION"
+
+      - name: Create immutable version tags and GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_NAME: ${{ steps.release.outputs.name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          release_commit=$(git rev-parse HEAD)
+          repository_tag="v${VERSION}"
+          package_tag="${PACKAGE_NAME}@${VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for tag in "$repository_tag" "$package_tag"; do
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+              git fetch --quiet origin "refs/tags/${tag}:refs/tags/${tag}"
+              tag_commit=$(git rev-list -n 1 "$tag")
+              if [[ "$tag_commit" != "$release_commit" ]]; then
+                echo "::error::Tag $tag already points to $tag_commit, expected $release_commit."
+                exit 1
+              fi
+              echo "Tag $tag already points to the release commit."
+            else
+              git tag -a "$tag" -m "Release $tag"
+              git push origin "refs/tags/${tag}"
+            fi
+          done
+
+          if gh release view "$repository_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub Release $repository_tag already exists."
+          else
+            gh release create "$repository_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$repository_tag" \
+              --verify-tag \
+              --generate-notes
+          fi
+
+          echo "Published ${PACKAGE_NAME}@${VERSION} from ${release_commit}." >> "$GITHUB_STEP_SUMMARY"
