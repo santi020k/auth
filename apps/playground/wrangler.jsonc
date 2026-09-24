@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "auth-playground",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
+  },
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "auth-playground-development",
+      "database_id": "local-development-only",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {
+    "ALLOW_LOCAL_CODE": "true",
+    "AUTH_BASE_URL": "http://127.0.0.1:8793",
+    "AUTH_SECRET": "local-development-secret-replace-before-deploying",
+    "OWNER_EMAIL": "owner@example.com",
+  },
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "apps/playground": {
+      "entry": ["src/**/*.ts"]
+    },
+    "apps/website": {
+      "entry": ["src/pages/**/*.astro", "tests/**/*.ts"]
+    },
+    "packages/auth-cloudflare": {
+      "entry": ["src/index.ts", "tests/**/*.test.ts"]
+    }
+  },
+  "ignoreBinaries": ["quality"],
+  "ignoreDependencies": ["@santi020k/astro-doctor", "@santi020k/eslint-plugin-astro-doctor"]
+}

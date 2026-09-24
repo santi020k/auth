@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>santi020k auth playground</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Local development only</p>
+      <h1>Email code and passkey playground</h1>
+      <p class="intro">
+        Validate the reusable owner-auth policy against a real Cloudflare Worker and local D1 database.
+      </p>
+
+      <section aria-labelledby="email-heading">
+        <h2 id="email-heading">1. Establish a session</h2>
+        <label for="email">Owner email</label>
+        <input id="email" name="email" type="email" value="owner@example.com" autocomplete="username webauthn" />
+        <div class="actions">
+          <button id="send-code" type="button">Generate local code</button>
+        </div>
+        <label for="otp">Six-digit code</label>
+        <input id="otp" name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+        <div class="actions">
+          <button id="verify-code" type="button">Verify code</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="passkey-heading">
+        <h2 id="passkey-heading">2. Validate passkeys</h2>
+        <p>Add a passkey while signed in, sign out, then sign back in using the platform prompt.</p>
+        <div class="actions">
+          <button id="add-passkey" type="button">Add passkey</button>
+          <button id="sign-out" class="secondary" type="button">Sign out</button>
+          <button id="use-passkey" type="button">Use passkey</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="state-heading">
+        <h2 id="state-heading">Current state</h2>
+        <output id="status" aria-live="polite">Ready.</output>
+        <pre id="session">Checking session…</pre>
+      </section>
+    </main>
+    <footer>
+      Built by <a href="https://santi020k.com" target="_blank" rel="noopener noreferrer">Santiago Molina</a>
+    </footer>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+**/.astro/
+**/.wrangler/
+**/dist/
+**/dist-test/
+**/node_modules/
+apps/playground/public/app.js
+apps/playground/public/app.js.map
+apps/website/playwright-report/
+apps/website/test-results/

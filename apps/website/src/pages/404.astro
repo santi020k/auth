@@ -1,0 +1,16 @@
+---
+import { ButtonLink } from "@santi020k/lumen-astro";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout description="The requested auth documentation page could not be found." title="Page not found">
+  <section class="not-found" aria-labelledby="not-found-title">
+    <p>404</p>
+    <h1 id="not-found-title">That route is outside the boundary.</h1>
+    <p>The documentation page you requested does not exist.</p>
+    <ButtonLink href="/" showArrow>
+      Return to auth
+    </ButtonLink>
+  </section>
+</BaseLayout>

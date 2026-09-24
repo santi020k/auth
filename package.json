@@ -1,0 +1,71 @@
+{
+  "name": "@santi020k/auth-root",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reusable authentication policy and Cloudflare integration for Santiago-owned applications.",
+  "license": "MIT",
+  "author": {
+    "name": "Santiago Molina",
+    "url": "https://santi020k.com"
+  },
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "scripts": {
+    "build": "pnpm --recursive --if-present run build",
+    "check": "pnpm run verify",
+    "check:package": "pnpm --filter @santi020k/auth-cloudflare run check:package",
+    "check:security": "pnpm audit --prod --audit-level high",
+    "commit": "commitprompt",
+    "dev": "pnpm --filter @santi020k/auth-playground run dev",
+    "dev:playground": "pnpm --filter @santi020k/auth-playground run dev",
+    "dev:website": "pnpm --filter @santi020k/auth-website run dev",
+    "format": "prettier . --write && eslint . --fix --no-warn-ignored --max-warnings=0",
+    "format:check": "prettier . --check",
+    "hooks:install": "quality hooks install",
+    "lint": "pnpm run lint:code && pnpm run lint:spell && pnpm run lint:unused",
+    "lint:code": "eslint . --no-warn-ignored --max-warnings=0",
+    "lint:spell": "cspell \"**\" --gitignore --cache --show-suggestions --show-context",
+    "lint:unused": "knip",
+    "pre-commit": "lint-staged",
+    "pre-push": "pnpm run verify",
+    "test": "pnpm --recursive --if-present run test",
+    "test:e2e": "pnpm --filter @santi020k/auth-website run test:e2e",
+    "typecheck": "pnpm --recursive --if-present run typecheck",
+    "verify": "pnpm --filter @santi020k/auth-cloudflare run build && pnpm run format:check && pnpm run lint && pnpm run build && pnpm run typecheck && pnpm run test && pnpm run test:e2e && pnpm run check:package && pnpm run check:security",
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@santi020k/commitprompt": "catalog:",
+    "@santi020k/astro-doctor": "catalog:",
+    "@santi020k/eslint-config-astro": "catalog:",
+    "@santi020k/eslint-config-basic": "catalog:",
+    "@santi020k/eslint-config-extensions": "catalog:",
+    "@santi020k/eslint-config-formats": "catalog:",
+    "@santi020k/eslint-config-hono": "catalog:",
+    "@santi020k/eslint-config-libraries": "catalog:",
+    "@santi020k/eslint-config-testing": "catalog:",
+    "@santi020k/eslint-config-tools": "catalog:",
+    "@santi020k/eslint-plugin-astro-doctor": "catalog:",
+    "cspell": "catalog:",
+    "eslint": "catalog:",
+    "knip": "catalog:",
+    "lint-staged": "catalog:",
+    "prettier": "catalog:",
+    "prettier-plugin-astro": "catalog:",
+    "publint": "catalog:"
+  },
+  "lint-staged": {
+    "*.{astro,css,html,js,json,jsonc,md,mjs,ts,yaml,yml}": [
+      "prettier --write",
+      "cspell --no-must-find-files"
+    ],
+    "*.{astro,js,mjs,ts}": [
+      "eslint --fix --no-warn-ignored --max-warnings=0"
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+---
+import "@santi020k/lumen-astro/styles.css";
+import "../styles/global.css";
+
+import UIPrimitives from "@santi020k/lumen-astro/runtime";
+
+interface Props {
+  description: string;
+  title: string;
+}
+
+const { description, title } = Astro.props;
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const socialTitle = title === "santi020k auth" ? title : `${title} · santi020k auth`;
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  author: {
+    "@type": "Person",
+    name: "Santiago Molina",
+    url: "https://santi020k.com",
+  },
+  codeRepository: "https://github.com/santi020k/auth",
+  description,
+  name: "santi020k auth",
+  programmingLanguage: "TypeScript",
+  runtimePlatform: "Cloudflare Workers",
+  url: canonicalURL.href,
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="author" content="Santiago Molina" />
+    <meta name="theme-color" content="#173e30" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={socialTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:site_name" content="santi020k auth" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="canonical" href={canonicalURL} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{socialTitle}</title>
+    <script type="application/ld+json" set:html={JSON.stringify(structuredData)}></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">
+      Skip to content
+    </a>
+    <UIPrimitives />
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="santi020k auth home">
+        <svg aria-hidden="true" viewBox="0 0 28 28">
+          <rect width="28" height="28" rx="8"></rect>
+          <path d="M9 14v-3a5 5 0 0 1 10 0v3"></path>
+          <rect x="7" y="13" width="14" height="10" rx="3"></rect>
+        </svg>
+        <span>
+          <strong>auth</strong>
+          <small>by santi020k</small>
+        </span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="/#architecture">Architecture</a>
+        <a href="/#security">Security</a>
+        <a href="/#integrate">Integrate</a>
+        <a href="/#readiness">Readiness</a>
+      </nav>
+    </header>
+    <main id="main-content">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <p>Reusable authentication policy. Separate identity state for every application.</p>
+      <p>
+        Built by{" "}
+        <a href="https://santi020k.com" target="_blank" rel="noopener noreferrer">
+          Santiago Molina
+        </a>
+        .
+      </p>
+    </footer>
+  </body>
+</html>

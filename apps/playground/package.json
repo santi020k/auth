@@ -1,0 +1,31 @@
+{
+  "name": "@santi020k/auth-playground",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local browser playground for the reusable Cloudflare authentication policy.",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm run build:client && wrangler deploy --dry-run --outdir dist",
+    "build:client": "esbuild src/client.ts --bundle --format=esm --outfile=public/app.js --platform=browser --sourcemap",
+    "db:apply": "wrangler d1 migrations apply auth-playground-development --local",
+    "dev": "pnpm run build:client && wrangler dev --port 8793",
+    "lint": "eslint src --max-warnings=0",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@better-auth/passkey": "catalog:",
+    "@santi020k/auth-cloudflare": "workspace:*",
+    "better-auth": "catalog:",
+    "hono": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "esbuild": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "license": "UNLICENSED"
+}

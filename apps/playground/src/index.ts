@@ -1,0 +1,72 @@
+import { createOwnerAuth, normalizeOwnerEmail } from "@santi020k/auth-cloudflare";
+import { Hono } from "hono";
+
+interface Bindings {
+  ALLOW_LOCAL_CODE: string;
+  ASSETS: Fetcher;
+  AUTH_BASE_URL: string;
+  AUTH_DB: D1Database;
+  AUTH_SECRET: string;
+  OWNER_EMAIL: string;
+}
+
+interface MailboxRow {
+  createdAt: number;
+  email: string;
+  otp: string;
+}
+
+const app = new Hono<{ Bindings: Bindings }>();
+
+function isLocalRequest(request: Request): boolean {
+  const hostname = new URL(request.url).hostname;
+  return hostname === "127.0.0.1" || hostname === "localhost";
+}
+
+app.get("/api/dev/latest-code", async (context) => {
+  if (context.env.ALLOW_LOCAL_CODE !== "true" || !isLocalRequest(context.req.raw)) return context.notFound();
+  const row = await context.env.AUTH_DB.prepare("SELECT email, otp, createdAt FROM playground_mailbox WHERE id = ?")
+    .bind("latest")
+    .first<MailboxRow>();
+  return context.json(row, 200, { "Cache-Control": "no-store" });
+});
+
+app.get("/api/session", async (context) => {
+  const auth = createOwnerAuth({
+    appName: "santi020k auth playground",
+    baseURL: context.env.AUTH_BASE_URL,
+    cookiePrefix: "santi-auth-playground",
+    database: context.env.AUTH_DB,
+    ownerEmail: context.env.OWNER_EMAIL,
+    secret: context.env.AUTH_SECRET,
+    sendVerificationOTP: () => Promise.resolve(),
+  });
+  return context.json(await auth.resolveSession(context.req.raw.headers), 200, { "Cache-Control": "no-store" });
+});
+
+app.all("/api/auth/*", async (context) => {
+  const auth = createOwnerAuth({
+    appName: "santi020k auth playground",
+    baseURL: context.env.AUTH_BASE_URL,
+    cookiePrefix: "santi-auth-playground",
+    database: context.env.AUTH_DB,
+    ownerEmail: context.env.OWNER_EMAIL,
+    secret: context.env.AUTH_SECRET,
+    sendVerificationOTP: async ({ email, otp }) => {
+      if (context.env.ALLOW_LOCAL_CODE !== "true" || !isLocalRequest(context.req.raw)) {
+        throw new Error("playground_email_delivery_not_configured");
+      }
+      await context.env.AUTH_DB.prepare(
+        `INSERT INTO playground_mailbox (id, email, otp, createdAt) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET email = excluded.email, otp = excluded.otp, createdAt = excluded.createdAt`,
+      )
+        .bind("latest", normalizeOwnerEmail(email), otp, Date.now())
+        .run();
+    },
+  });
+  return auth.handler(context.req.raw);
+});
+
+app.all("*", (context) => context.env.ASSETS.fetch(context.req.raw));
+
+export default app;

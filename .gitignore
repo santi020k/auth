@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-test/
+**/.astro/
+.wrangler/
+.dev.vars
+coverage/
+.cspellcache
+apps/playground/public/app.js
+apps/playground/public/app.js.map
+apps/website/playwright-report/
+apps/website/test-results/
+.DS_Store

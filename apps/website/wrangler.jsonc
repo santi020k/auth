@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "santi020k-auth-website",
+  "compatibility_date": "2026-09-24",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "auth.santi020k.com",
+      "custom_domain": true,
+    },
+  ],
+  "assets": {
+    "directory": "dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+  },
+}

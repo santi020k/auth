@@ -1,0 +1,227 @@
+---
+import { Badge, ButtonLink, Card, CodeTabs } from "@santi020k/lumen-astro";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const description =
+  "Owner-only email-code and passkey authentication policy for Hono applications running on Cloudflare Workers and D1.";
+
+const installCommands = [
+  {
+    code: "pnpm add @santi020k/auth-cloudflare better-auth @better-auth/passkey",
+    label: "pnpm",
+    language: "shell",
+    value: "pnpm",
+  },
+  {
+    code: "npm install @santi020k/auth-cloudflare better-auth @better-auth/passkey",
+    label: "npm",
+    language: "shell",
+    value: "npm",
+  },
+] as const;
+
+const integrationExamples = [
+  {
+    code: `const ownerAuth = createOwnerAuth({
+  appName: "Example owner workspace",
+  baseURL: env.AUTH_BASE_URL,
+  cookiePrefix: "example-owner",
+  database: env.AUTH_DB,
+  ownerEmail: env.OWNER_EMAIL,
+  secret: env.AUTH_SECRET,
+  sendVerificationOTP: ({ email, otp }) =>
+    sendLoginCode(env, email, otp),
+});
+
+app.all("/api/auth/*", (context) =>
+  ownerAuth.handler(context.req.raw),
+);`,
+    label: "Worker",
+    language: "typescript",
+    value: "worker",
+  },
+  {
+    code: `const identity = await ownerAuth.resolveSession(
+  context.req.raw.headers,
+);
+
+if (!identity) {
+  return context.json({ code: "unauthorized" }, 401);
+}`,
+    label: "Protected route",
+    language: "typescript",
+    value: "protected-route",
+  },
+] as const;
+
+const boundaries = [
+  ["Identity", "One exact owner email per application"],
+  ["Persistence", "A dedicated D1 database and app-owned migrations"],
+  ["Browser", "Exact origin, cookie prefix, and WebAuthn relying-party ID"],
+  ["Recovery", "A consumer-owned recovery policy and delivery provider"],
+] as const;
+---
+
+<BaseLayout description={description} title="santi020k auth">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <Badge variant="warning">Private production candidate</Badge>
+      <h1 id="hero-title">Share authentication policy. Never share identity state.</h1>
+      <p>
+        A focused email-code and passkey foundation for Santiago-owned Cloudflare applications. Better Auth handles the
+        protocol; each product keeps its own users, sessions, secrets, cookies, and recovery path.
+      </p>
+      <div class="hero-actions">
+        <ButtonLink href="#integrate" showArrow>
+          Review the integration
+        </ButtonLink>
+        <ButtonLink href="#security" variant="secondary">
+          Inspect the security boundary
+        </ButtonLink>
+      </div>
+    </div>
+    <aside aria-label="Isolation contract">
+      <Card class="boundary-card" glass="strong">
+        <p class="card-kicker">Isolation contract</p>
+        <dl>
+          {boundaries.map(([term, detail]) => (
+            <div>
+              <dt>{term}</dt>
+              <dd>{detail}</dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
+    </aside>
+  </section>
+
+  <section class="section" id="architecture" aria-labelledby="architecture-title">
+    <div class="section-heading">
+      <p>Architecture</p>
+      <h2 id="architecture-title">One policy package, isolated applications</h2>
+      <p>The reusable layer stays deliberately narrow. Product authorization and operational recovery remain local.</p>
+    </div>
+    <ol class="flow" aria-label="Authentication request flow">
+      <li>
+        <span>01</span>
+        <h3>Validate the boundary</h3>
+        <p>Reject unexpected origins and identities before protocol handlers touch state.</p>
+      </li>
+      <li>
+        <span>02</span>
+        <h3>Run proven protocols</h3>
+        <p>Better Auth manages hashed email codes, sessions, and WebAuthn verification.</p>
+      </li>
+      <li>
+        <span>03</span>
+        <h3>Persist per product</h3>
+        <p>Cloudflare D1 stores rate limits and authentication records for one application only.</p>
+      </li>
+      <li>
+        <span>04</span>
+        <h3>Authorize locally</h3>
+        <p>The consuming product resolves the session and applies its own domain permissions.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="section security-grid" id="security" aria-labelledby="security-title">
+    <div class="section-heading">
+      <p>Security posture</p>
+      <h2 id="security-title">Secure defaults that remain visible</h2>
+      <p>Controls are explicit in code and tests so a consumer can review the boundary before adopting it.</p>
+    </div>
+    <div class="feature-grid">
+      <Card as="article">
+        <p class="feature-index">A</p>
+        <h3>Private email discovery</h3>
+        <p>Unknown addresses receive the same success-shaped response without code delivery or database persistence.</p>
+      </Card>
+      <Card as="article">
+        <p class="feature-index">B</p>
+        <h3>Phishing-resistant passkeys</h3>
+        <p>Discoverable credentials and user verification are required for the exact application hostname.</p>
+      </Card>
+      <Card as="article">
+        <p class="feature-index">C</p>
+        <h3>Durable rate limits</h3>
+        <p>Limits are persisted in D1 instead of disappearing whenever a Worker isolate is recycled.</p>
+      </Card>
+      <Card as="article">
+        <p class="feature-index">D</p>
+        <h3>Production transport</h3>
+        <p>Non-local origins require HTTPS and secure cookies. Unsafe requests require an exact Origin match.</p>
+      </Card>
+    </div>
+  </section>
+
+  <section class="section code-section" id="integrate" aria-labelledby="integrate-title">
+    <div class="section-heading">
+      <p>Integration</p>
+      <h2 id="integrate-title">Small API, deliberate cutover</h2>
+      <p>
+        The package stays private until two real consumers validate additive migrations and browser passkeys on their
+        final origins.
+      </p>
+    </div>
+    <div class="code-grid">
+      <div>
+        <h3>Install the pinned protocol packages</h3>
+        <CodeTabs
+          ariaLabel="Package installation commands"
+          items={installCommands}
+          storageKey="auth-install-package-manager"
+          theme="lumen"
+        />
+      </div>
+      <div>
+        <h3>Mount and protect routes</h3>
+        <CodeTabs
+          ariaLabel="Cloudflare Worker integration examples"
+          items={integrationExamples}
+          storageKey="auth-code-example"
+          theme="lumen"
+        />
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="readiness" aria-labelledby="readiness-title">
+    <div class="section-heading">
+      <p>Release discipline</p>
+      <h2 id="readiness-title">Production is a verified state, not a label</h2>
+      <p>The repository can prove package behavior now. Publication still waits for consumer-origin evidence.</p>
+    </div>
+    <div class="readiness-grid">
+      <Card as="article" variant="muted">
+        <Badge variant="success">Automated now</Badge>
+        <h3>Repository gates</h3>
+        <ul>
+          <li>Strict TypeScript, ESLint, spelling, formatting, and unused-code checks</li>
+          <li>D1 integration, package-contract, security, accessibility, and responsive browser tests</li>
+          <li>Quality-managed hooks, CI annotations, CodeQL, and dependency updates</li>
+        </ul>
+      </Card>
+      <Card as="article" variant="muted">
+        <Badge variant="warning">Required before publish</Badge>
+        <h3>Consumer evidence</h3>
+        <ul>
+          <li>Separate additive migrations in PostLens Planner and Observatory</li>
+          <li>Email delivery and recovery rehearsal without exposing codes</li>
+          <li>Passkey registration and sign-in on each final HTTPS origin</li>
+        </ul>
+      </Card>
+    </div>
+  </section>
+
+  <section class="closing" aria-labelledby="closing-title">
+    <div>
+      <p>Designed for controlled adoption</p>
+      <h2 id="closing-title">Make the shared part dependable—and the private parts unmistakable.</h2>
+    </div>
+    <ButtonLink href="#integrate" variant="secondary" showArrow>
+      Start with the checklist
+    </ButtonLink>
+  </section>
+</BaseLayout>

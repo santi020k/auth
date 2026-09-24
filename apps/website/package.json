@@ -1,0 +1,35 @@
+{
+  "name": "@santi020k/auth-website",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Documentation website for @santi020k/auth-cloudflare.",
+  "type": "module",
+  "scripts": {
+    "build": "astro build",
+    "clean": "rm -rf .astro dist playwright-report test-results",
+    "deploy": "pnpm run build && wrangler deploy",
+    "dev": "astro dev --host 127.0.0.1 --port 4393",
+    "preview": "wrangler dev --ip 127.0.0.1 --port 4393",
+    "preview:test": "node scripts/serve-static.mjs",
+    "test": "astro check",
+    "test:e2e": "pnpm run build && playwright test",
+    "typecheck": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "catalog:",
+    "@santi020k/lumen-astro": "catalog:"
+  },
+  "devDependencies": {
+    "@astrojs/check": "catalog:",
+    "@axe-core/playwright": "catalog:",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "astro": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "license": "UNLICENSED"
+}
