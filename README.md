@@ -57,7 +57,8 @@ pnpm verify
 
 `pnpm verify` checks formatting, Santiago-owned ESLint policy, spelling, unused code, builds, strict types, unit and D1
 integration tests, desktop and mobile website E2E/accessibility behavior, package exports, and production dependency
-advisories. CI runs the same Quality task and also provides CodeQL and dependency-review workflows.
+advisories. CI runs the same Quality task. CodeQL and dependency review are ready to activate when the repository is
+public or its GitHub plan supports Advanced Security for private repositories.
 
 See [production readiness](docs/production-readiness.md) for the exact evidence required before deploying the website or
 making the package public. A green local gate is necessary but does not prove a Cloudflare deployment, real email

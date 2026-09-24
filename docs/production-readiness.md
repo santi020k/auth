@@ -16,7 +16,8 @@ quality hooks status
 
 The gate covers formatting, linting, spelling, unused code, builds, strict types, policy and D1 integration tests,
 desktop and mobile documentation E2E tests, automated accessibility checks, package export validation, and production
-dependency advisories. GitHub workflows add CodeQL and dependency review when the repository is connected to GitHub.
+dependency advisories. GitHub workflows add CodeQL and dependency review when GitHub Advanced Security supports the
+repository's visibility.
 
 ## Website deployment gate
 
