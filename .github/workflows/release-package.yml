@@ -72,6 +72,7 @@ jobs:
           private_package=$(node -p "Boolean(require('./packages/auth-cloudflare/package.json').private)")
           publish_access=$(node -p "require('./packages/auth-cloudflare/package.json').publishConfig?.access ?? ''")
           expected_branch="release/v${version}"
+          pack_metadata="$RUNNER_TEMP/auth-package-pack.json"
 
           if [[ "$private_package" == "true" ]]; then
             echo "::error::The package is still private. Complete the two-consumer production gate before publishing."
@@ -95,7 +96,20 @@ jobs:
             exit 1
           fi
 
+          (
+            cd packages/auth-cloudflare
+            npm pack --dry-run --json
+          ) > "$pack_metadata"
+          local_integrity=$(node -p \
+            "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))[0].integrity" \
+            "$pack_metadata")
+
           if npm view "$package_name@$version" version >/dev/null 2>&1; then
+            published_integrity=$(npm view "$package_name@$version" dist.integrity)
+            if [[ -z "$local_integrity" || "$published_integrity" != "$local_integrity" ]]; then
+              echo "::error::$package_name@$version exists on npm, but its integrity does not match the package built from this commit. Refusing to create source tags or a GitHub Release."
+              exit 1
+            fi
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
