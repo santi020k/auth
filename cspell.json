@@ -21,6 +21,7 @@
     "Miniflare",
     "passkey",
     "passkeys",
+    "pipefail",
     "pnpm",
     "PostLens",
     "publint",

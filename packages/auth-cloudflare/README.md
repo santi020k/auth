@@ -11,7 +11,8 @@ applications. Every consumer supplies a unique origin, cookie prefix, secret, D1
 
 This package is private while the playground and initial consumers validate the integration. Do not publish it or
 replace an application's current authentication until its D1 migration, compatibility route, session cutover, and
-browser passkey flow have passed.
+browser passkey flow have passed. The npm package page will remain unavailable until that evidence is complete; see the
+repository's [release process](https://github.com/santi020k/auth/blob/main/docs/releasing.md) for the exact gate.
 
 ## Policy
 

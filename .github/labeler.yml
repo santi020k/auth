@@ -1,0 +1,36 @@
+package:
+  - changed-files:
+      - any-glob-to-any-file: "packages/auth-cloudflare/**"
+
+website:
+  - changed-files:
+      - any-glob-to-any-file: "apps/website/**"
+
+playground:
+  - changed-files:
+      - any-glob-to-any-file: "apps/playground/**"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "apps/website/src/pages/**"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "package.json"
+          - "packages/*/package.json"
+          - "apps/*/package.json"
+          - "pnpm-lock.yaml"
+          - "pnpm-workspace.yaml"
+
+release:
+  - head-branch: ["release/v*"]
+
+skip-changelog:
+  - head-branch: ["chore/*", "ci/*", "docs/*", "test/*"]

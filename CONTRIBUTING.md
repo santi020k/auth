@@ -25,4 +25,5 @@ application. Do not introduce shared databases, secrets, cookies, sessions, pass
 policy between consumers.
 
 Changes that affect a publishable package need a Changeset. The package remains private until the release gates in
-`docs/production-readiness.md` are complete.
+`docs/production-readiness.md` are complete. Use `pnpm release:pack` to inspect the exact npm tarball before proposing a
+release. Release preparation and publication follow `docs/releasing.md`; do not create package tags manually.

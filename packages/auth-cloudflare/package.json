@@ -53,7 +53,7 @@
     "url": "https://github.com/santi020k/auth/issues"
   },
   "publishConfig": {
-    "access": "restricted",
-    "provenance": true
+    "access": "public",
+    "provenance": false
   }
 }
