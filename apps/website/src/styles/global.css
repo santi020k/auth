@@ -442,7 +442,7 @@ main {
   }
 
   .hero-copy h1 {
-    font-size: clamp(2.8rem, 15vw, 4.2rem);
+    font-size: clamp(2.6rem, 12.5vw, 4rem);
   }
 
   .hero-actions > * {
