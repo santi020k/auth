@@ -54,9 +54,10 @@ creates immutable `v<semver>` and package-version tags plus a GitHub Release fro
 
 A manual dispatch on `main` is reserved for idempotent recovery and requires `release_commit`: the full SHA of the
 original merged `main` commit that produced the published tarball. The workflow rejects malformed SHAs and commits
-outside `main`, verifies the existing registry artifact byte-for-byte, tolerates a duplicate-publish conflict while
-npm security scanning temporarily hides an accepted version, and creates tags from the original commit rather than
-from a later workflow-only fix.
+outside `main`, verifies the existing registry artifact byte-for-byte, and creates tags from the original commit
+rather than from a later workflow-only fix. Manual recovery never publishes an absent version because npm provenance
+would identify the dispatch revision; rerun the original release-merge workflow for a publication that did not occur,
+or wait for npm security scanning to expose a version that the registry already accepted.
 
 Before declaring the release complete, verify that the tags point to the merged commit, the GitHub Release exists, npm
 serves the intended version, and the documentation site is live. Then delete the release branch and fast-forward local

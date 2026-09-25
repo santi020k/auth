@@ -148,6 +148,10 @@ jobs:
             fi
             set_output "publish=false"
           else
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "::error::Manual recovery cannot publish an absent version because npm provenance would identify the workflow-dispatch revision instead of release_commit. Rerun the original release-merge workflow, or wait for npm scanning to expose an already accepted version."
+              exit 1
+            fi
             set_output "publish=true"
           fi
 
@@ -164,23 +168,13 @@ jobs:
           # only; subsequent releases use GitHub OIDC with an empty value here.
           NODE_AUTH_TOKEN: ${{ steps.release.outputs.initial_publish == 'true' && secrets.NPM_TOKEN || '' }}
           PACKAGE_TARBALL: ${{ steps.release.outputs.tarball }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           if [[ "${{ steps.release.outputs.initial_publish }}" == "true" && -z "$NODE_AUTH_TOKEN" ]]; then
             echo "::error::The initial npm publication requires the production NPM_TOKEN secret."
             exit 1
           fi
-          set +e
           npm publish "$PACKAGE_TARBALL" --access public
-          publish_status=$?
-          set -e
-          if [[ "$publish_status" -ne 0 && "$EVENT_NAME" != "workflow_dispatch" ]]; then
-            exit "$publish_status"
-          fi
-          if [[ "$publish_status" -ne 0 ]]; then
-            echo "::warning::The recovery publish attempt failed. Continuing only to the bounded registry version and integrity verification."
-          fi
 
       - name: Verify npm publication
         shell: bash
