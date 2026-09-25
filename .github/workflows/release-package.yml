@@ -4,12 +4,6 @@ on:
   pull_request:
     branches: [main]
     types: [closed]
-  workflow_dispatch:
-    inputs:
-      release_commit:
-        description: Full SHA of the merged main commit to recover
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -24,14 +18,8 @@ jobs:
     name: Verify and publish
     if: >-
       ${{
-        (
-          github.event_name == 'workflow_dispatch' &&
-          github.ref == 'refs/heads/main'
-        ) ||
-        (
-          github.event.pull_request.merged == true &&
-          startsWith(github.event.pull_request.head.ref, 'release/v')
-        )
+        github.event.pull_request.merged == true &&
+        startsWith(github.event.pull_request.head.ref, 'release/v')
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -42,28 +30,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || inputs.release_commit }}
-
-      - name: Validate release commit provenance
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        env:
-          REQUESTED_RELEASE_COMMIT: ${{ inputs.release_commit }}
-        run: |
-          set -euo pipefail
-          if [[ ! "$REQUESTED_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::release_commit must be a full 40-character lowercase commit SHA."
-            exit 1
-          fi
-          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_RELEASE_COMMIT" ]]; then
-            echo "::error::The checked-out revision does not match release_commit."
-            exit 1
-          fi
-          git fetch --quiet origin main
-          if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo "::error::Recovery releases must target a commit already merged into main."
-            exit 1
-          fi
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
@@ -88,7 +55,6 @@ jobs:
         name: Validate release metadata
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
           RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
@@ -115,7 +81,7 @@ jobs:
             exit 1
           fi
 
-          if [[ "$EVENT_NAME" == "pull_request" && "$RELEASE_BRANCH" != "$expected_branch" ]]; then
+          if [[ "$RELEASE_BRANCH" != "$expected_branch" ]]; then
             echo "::error::Expected release branch $expected_branch, received $RELEASE_BRANCH."
             exit 1
           fi
@@ -129,16 +95,15 @@ jobs:
           fi
 
           mkdir -p "$pack_destination"
-          npm pack --json \
+          pnpm --dir packages/auth-cloudflare pack \
             --pack-destination "$pack_destination" \
-            ./packages/auth-cloudflare > "$pack_metadata"
-          package_filename=$(node -p \
-            "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))[0].filename" \
+            --json > "$pack_metadata"
+          package_tarball=$(node -p \
+            "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).filename" \
             "$pack_metadata")
-          package_tarball="$pack_destination/$(basename "$package_filename")"
-          local_integrity=$(node -p \
-            "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))[0].integrity" \
-            "$pack_metadata")
+          local_integrity=$(node -e \
+            "const { createHash } = require('node:crypto'); const { readFileSync } = require('node:fs'); process.stdout.write('sha512-' + createHash('sha512').update(readFileSync(process.argv[1])).digest('base64'));" \
+            "$package_tarball")
 
           if npm view "$package_name@$version" version >/dev/null 2>&1; then
             published_integrity=$(npm view "$package_name@$version" dist.integrity)
@@ -146,12 +111,9 @@ jobs:
               echo "::error::$package_name@$version exists on npm, but its integrity does not match the package built from this commit. Refusing to create source tags or a GitHub Release."
               exit 1
             fi
+
             set_output "publish=false"
           else
-            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-              echo "::error::Manual recovery cannot publish an absent version because npm provenance would identify the workflow-dispatch revision instead of release_commit. Rerun the original release-merge workflow, or wait for npm scanning to expose an already accepted version."
-              exit 1
-            fi
             set_output "publish=true"
           fi
 
@@ -198,7 +160,6 @@ jobs:
           exit 1
 
       - name: Load production website deployment secrets
-        if: github.event_name != 'workflow_dispatch'
         uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
         with:
           method: oidc
@@ -208,7 +169,6 @@ jobs:
           secret-path: /github/deploy-website
 
       - name: Deploy documentation website
-        if: github.event_name != 'workflow_dispatch'
         run: pnpm --filter @santi020k/auth-website run deploy
 
       - name: Verify documentation website
