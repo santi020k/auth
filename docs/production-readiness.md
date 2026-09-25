@@ -48,12 +48,14 @@ The package remains experimental until separate applications have completed all 
 1. The application owns and successfully applies its additive D1 migration copied from the canonical package schema.
 2. Existing login and recovery paths remain available during a bounded compatibility window.
 3. Real transactional email delivery is verified without logging, displaying, or returning the code.
-4. Owner and non-owner email behavior, expiry, attempts, rate limiting, sign-out, and origin rejection are verified.
+4. Approved and rejected email behavior, expiry, attempts, rate limiting, sign-out, and origin rejection are verified.
 5. Credentialed CORS is verified when browser and auth server origins differ.
 6. Passkey registration and sign-in succeed in a real browser on the application's final HTTPS origin.
 7. Recovery is documented and rehearsed for that application.
 8. Cookies, secrets, databases, passkeys, relying-party IDs, and recovery policy remain isolated from every other
    consumer.
+9. Multi-user consumers verify a second approved account, current role lookup, and immediate access revocation after
+   membership removal.
 
 Evidence from at least two materially separate consumers supports a later decision to call the package supported or
 stable. It is an adoption-maturity gate, not a public npm availability gate.

@@ -13,11 +13,12 @@ pnpm add @santi020k/auth-cloudflare hono
 1. Copy the package's `schema/d1.sql` into an application-owned, additive migration. Do not run package migrations
    implicitly or point two applications at the same authentication tables.
 2. Apply the migration through the application's normal development, staging, and production process.
-3. Run `checkOwnerAuthSchema(database)` from `@santi020k/auth-cloudflare/schema` in a preflight or diagnostic path. It
-   reports missing required tables, columns, primary and unique key constraints, and indexes while allowing
-   application-owned additions.
-4. Configure a unique cookie prefix, owner email, delivery provider, and secret through the application's secret
-   manager. Never reuse secrets, cookies, sessions, passkeys, or databases between consumers.
+3. Run `checkAuthSchema(database)` (or the retained `checkOwnerAuthSchema` alias) from
+   `@santi020k/auth-cloudflare/schema` in a preflight or diagnostic path. It reports missing required tables, columns,
+   primary and unique key constraints, and indexes while allowing application-owned additions.
+4. Configure a unique cookie prefix, delivery provider, and secret through the application's secret manager. Choose
+   either one owner email or an application-owned membership lookup. Never reuse secrets, cookies, sessions, passkeys,
+   or databases between consumers.
 
 ## Configure the server
 
@@ -50,6 +51,32 @@ app.all("/api/auth/*", (context) => {
 The handler accepts credentialed browser requests only from the exact `applicationOrigin`. Unsafe requests without that
 origin are rejected, and successful cross-origin responses expose credentials only to that configured origin.
 
+For multiple accounts, replace the single owner factory with an application-owned live membership check:
+
+```ts
+import { createMultiUserAuth } from "@santi020k/auth-cloudflare";
+
+const auth = createMultiUserAuth({
+  appName: "Example team workspace",
+  applicationOrigin: context.env.APPLICATION_ORIGIN,
+  authServerURL: context.env.AUTH_SERVER_URL,
+  cookiePrefix: "example-team",
+  database: context.env.AUTH_DB,
+  secret: context.env.AUTH_SECRET,
+  authorizeEmail: (email) => isActiveMember(context.env.AUTH_DB, email),
+  sendVerificationOTP: ({ email, otp }) => sendLoginCode(context.env, email, otp),
+  waitUntil: (task) => {
+    context.executionCtx.waitUntil(task);
+  },
+});
+```
+
+The callback receives a normalized email and may be asynchronous. It is checked before code delivery and identity
+writes, then checked again for session creation, session resolution, and authenticated passkey operations. Removing
+membership therefore blocks a new sign-in, passkey mutation, and application access immediately without waiting for the
+stored session to expire. Keep roles, invitations, teams, and permissions in application-owned domain tables; the
+resolved auth identity contains only `email` and `userId`.
+
 For Hono routes, resolve the session once with the packaged middleware:
 
 ```ts
@@ -71,6 +98,22 @@ protectedRoutes.get("/account", (context) => context.json(context.var.ownerAuthS
 `createOwnerAuthForContext` is an application-owned resolver that returns a `createOwnerAuth(...)` instance using the
 current request context and bindings, as in the server example above.
 
+Multi-user routes use the generic middleware and session variable:
+
+```ts
+import { createAuthMiddleware, type AuthEnv } from "@santi020k/auth-cloudflare/hono";
+
+interface AppEnv extends AuthEnv {
+  Bindings: Bindings;
+}
+
+app.use(
+  "/account/*",
+  createAuthMiddleware<AppEnv>((context) => createAuthForContext(context)),
+);
+app.get("/account/profile", (context) => context.json(context.var.authSession));
+```
+
 ## Configure the browser
 
 The packaged client includes the email OTP and passkey plugins and always sends credentials:
@@ -84,6 +127,24 @@ export const authClient = createOwnerAuthClient({
 ```
 
 If the server uses a non-default path, pass the same `basePath` to both server and client.
+
+For a multi-user UI, use the generic client name with the same browser contract:
+
+```ts
+import { createApplicationAuthClient } from "@santi020k/auth-cloudflare/client";
+
+export const authClient = createApplicationAuthClient({
+  authServerURL: "https://api.observatory.santi020k.com",
+});
+```
+
+## Move from one owner to multiple accounts
+
+The canonical authentication tables already support multiple identities, so changing factories requires no auth schema
+migration. If the product does not already have an authoritative member source, add one through an app-owned additive
+migration. Add the current owner before cutover, then verify the owner, a second approved account, a rejected account,
+and immediate revocation. Rejected code requests retain a uniform success-shaped response and receive no email; Better
+Auth may still store a hashed, expiring verification record as part of that uniform flow.
 
 ## Rotate secrets
 

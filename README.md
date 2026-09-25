@@ -1,6 +1,6 @@
 # santi020k auth
 
-Public, reusable authentication policy for owner-only applications. The first adapter,
+Public, reusable authentication policy for single-owner and multi-user applications. The first adapter,
 [`@santi020k/auth-cloudflare`](https://www.npmjs.com/package/@santi020k/auth-cloudflare), provides email-code and
 passkey authentication for Hono applications on Cloudflare Workers and D1. A local playground demonstrates the browser
 flow, and a static documentation website explains the security boundary and integration contract.
@@ -47,8 +47,9 @@ Open `http://127.0.0.1:4393`.
 
 Before integrating a real application, copy and review the canonical
 [`schema/d1.sql`](packages/auth-cloudflare/schema/d1.sql) into an application-owned additive migration. Configure a
-unique secret, owner email, cookie prefix, browser `applicationOrigin`, and `authServerURL`, then connect a real
-transactional email provider. Never deploy the playground's development mailbox.
+unique secret, cookie prefix, browser `applicationOrigin`, and `authServerURL`, then configure either one owner email or
+an application-owned membership lookup and connect a real transactional email provider. Never deploy the playground's
+development mailbox.
 
 Use the [consumer integration checklist](docs/consumer-integration.md) for the separate PostLens Planner and Observatory
 cutovers. Those examples intentionally show different databases, cookie prefixes, and origins.
@@ -77,7 +78,9 @@ immutable version tags, and initial-release requirements.
 
 - Authentication requests accept only the configured browser origin and send credentialed CORS headers for that exact
   origin; unsafe requests without it are rejected.
-- Only the configured owner email may create or update a user.
+- Only the configured owner or an email approved by the consumer's live membership policy may create or update a user.
+- Multi-user session creation, session resolution, and authenticated passkey operations recheck current membership so
+  removing access takes effect without waiting for session expiry.
 - Email codes are hashed in Better Auth storage, expire after ten minutes, and allow five attempts.
 - Passkeys require discoverable credentials and user verification.
 - Rate limits persist in D1 rather than isolate memory.

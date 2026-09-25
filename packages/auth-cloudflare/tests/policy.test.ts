@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 
 import {
   enforceOwnerAuthRequest,
+  normalizeAuthEmail,
   normalizeOwnerEmail,
   type OwnerAuthPolicyOptions,
+  resolveMultiUserAuthPolicy,
   resolveOwnerAuthPolicy,
 } from "../src/index.js";
 
@@ -35,7 +37,27 @@ void describe("owner auth policy", () => {
       relyingPartyId: "planner.example.com",
       secureCookies: true,
     });
+    assert.equal(normalizeAuthEmail(" MEMBER@EXAMPLE.COM "), "member@example.com");
     assert.equal(normalizeOwnerEmail(" OWNER@EXAMPLE.COM "), "owner@example.com");
+  });
+
+  void it("rejects malformed and oversized email input in linear time", () => {
+    assert.throws(() => normalizeAuthEmail("missing-domain@"), /owner_auth_email_invalid/u);
+    assert.throws(() => normalizeAuthEmail("two@@example.com"), /owner_auth_email_invalid/u);
+    assert.throws(() => normalizeAuthEmail(`!@!.${"!.".repeat(100_000)}`), /owner_auth_email_invalid/u);
+  });
+
+  void it("resolves the shared policy without exposing a consumer authorization callback", () => {
+    const policy = resolveMultiUserAuthPolicy(options());
+    assert.deepEqual(policy, {
+      applicationOrigin: "https://planner.example.com",
+      authServerOrigin: "https://api.planner.example.com",
+      basePath: "/api/auth",
+      cookiePrefix: "example-owner",
+      emailOtpRateLimit: { max: 3, window: 600 },
+      relyingPartyId: "planner.example.com",
+      secureCookies: true,
+    });
   });
 
   void it("allows HTTP only for local development origins", () => {

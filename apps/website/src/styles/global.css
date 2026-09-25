@@ -523,6 +523,123 @@ main {
   font-size: 1.1rem;
 }
 
+.docs-hero {
+  display: grid;
+  align-items: end;
+  min-height: 30rem;
+  padding-block: clamp(4rem, 10vw, 8rem);
+}
+
+.docs-hero > div {
+  max-width: 56rem;
+}
+
+.docs-hero h1 {
+  max-width: 13ch;
+  margin: 1.2rem 0 1.5rem;
+  font-size: clamp(3rem, 7vw, 6rem);
+  letter-spacing: -0.07em;
+  line-height: 0.95;
+}
+
+.docs-hero > div > p {
+  max-width: 48rem;
+  color: hsl(var(--ink-soft));
+  font-size: clamp(1.05rem, 2vw, 1.28rem);
+  line-height: 1.65;
+}
+
+.docs-content code:not(.ui-code code) {
+  padding: 0.12em 0.35em;
+  border-radius: 0.35rem;
+  background: hsl(var(--surface-muted));
+  font-size: 0.9em;
+}
+
+.decision-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.decision-grid .ui-card,
+.migration-card {
+  min-width: 0;
+  padding: clamp(1.2rem, 3vw, 2rem);
+  border-radius: 1rem;
+}
+
+.decision-grid h3,
+.migration-card h3 {
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+
+.decision-grid p {
+  margin-bottom: 0;
+  color: hsl(var(--ink-soft));
+  line-height: 1.6;
+}
+
+.docs-code-section .ui-code {
+  --ui-code-token-accent: hsl(var(--brand-solid));
+  --ui-code-token-comment: hsl(var(--ink-soft));
+  --ui-code-token-symbol: hsl(var(--ink-soft));
+}
+
+.docs-code-section code:not(.ui-code code) {
+  background: hsl(var(--canvas) / 0.12);
+  color: hsl(var(--canvas));
+}
+
+.docs-prose {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(20rem, 1.2fr);
+  gap: clamp(2rem, 7vw, 6rem);
+}
+
+.lifecycle-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: lifecycle;
+}
+
+.lifecycle-list li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.45fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  padding: 1.35rem 0;
+  border-top: 1px solid hsl(var(--line));
+  counter-increment: lifecycle;
+}
+
+.lifecycle-list strong::before {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: hsl(var(--brand));
+  content: "0" counter(lifecycle);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+}
+
+.lifecycle-list span,
+.migration-card li {
+  color: hsl(var(--ink-soft));
+  line-height: 1.6;
+}
+
+.migration-card ol {
+  margin: 1.2rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.migration-card li + li {
+  margin-top: 0.75rem;
+}
+
 @media (max-width: 52rem) {
   .site-header {
     align-items: flex-start;
@@ -561,6 +678,10 @@ main {
   .closing {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .docs-prose {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -616,8 +737,23 @@ main {
   .feature-grid,
   .readiness-grid,
   .code-grid,
-  .boundary-list {
+  .boundary-list,
+  .decision-grid {
     grid-template-columns: 1fr;
+  }
+
+  .docs-hero {
+    min-height: auto;
+    padding-top: 3rem;
+  }
+
+  .docs-hero h1 {
+    font-size: clamp(2.55rem, 12vw, 3.6rem);
+  }
+
+  .lifecycle-list li {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
   }
 
   .flow li,

@@ -69,16 +69,21 @@ void describe("packed package consumer", () => {
       );
       await writeFile(
         resolve(temporaryDirectory, "consumer.ts"),
-        `import { createOwnerAuth, type OwnerAuthOptions } from "@santi020k/auth-cloudflare";
-import { createOwnerAuthClient } from "@santi020k/auth-cloudflare/client";
-import { createOwnerAuthMiddleware } from "@santi020k/auth-cloudflare/hono";
-import { checkOwnerAuthSchema } from "@santi020k/auth-cloudflare/schema";
+        `import { createMultiUserAuth, createOwnerAuth, type MultiUserAuthOptions, type OwnerAuthOptions } from "@santi020k/auth-cloudflare";
+import { createApplicationAuthClient, createOwnerAuthClient } from "@santi020k/auth-cloudflare/client";
+import { createAuthMiddleware, createOwnerAuthMiddleware } from "@santi020k/auth-cloudflare/hono";
+import { checkAuthSchema, checkOwnerAuthSchema } from "@santi020k/auth-cloudflare/schema";
 
 declare const options: OwnerAuthOptions;
+declare const multiUserOptions: MultiUserAuthOptions;
 const auth = createOwnerAuth(options);
+const multiUserAuth = createMultiUserAuth(multiUserOptions);
 void createOwnerAuthClient({ authServerURL: "https://auth.example.com" });
+void createApplicationAuthClient({ authServerURL: "https://auth.example.com" });
 void createOwnerAuthMiddleware(auth);
+void createAuthMiddleware(multiUserAuth);
 void checkOwnerAuthSchema(options.database);
+void checkAuthSchema(options.database);
 `,
       );
       try {

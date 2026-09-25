@@ -17,7 +17,7 @@ test("presents the complete authentication boundary", async ({ page }) => {
     "https://www.npmjs.com/package/@santi020k/auth-cloudflare",
   );
   await expect(page.getByText("@santi020k/auth-cloudflare", { exact: true })).toBeVisible();
-  await expect(page.getByText("No shared account system", { exact: true })).toBeVisible();
+  await expect(page.getByText("No cross-application account system", { exact: true })).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://auth.santi020k.com/");
 
   for (const id of ["architecture", "security", "integrate", "readiness"]) {
@@ -55,4 +55,21 @@ test("serves an intentional not-found page", async ({ page }) => {
   expect(response?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("That route is outside the boundary.");
   await expect(page.getByRole("link", { name: "Return to auth" })).toHaveAttribute("href", "/");
+});
+
+test("documents the multi-user authorization boundary", async ({ page }) => {
+  await page.goto("/multi-user");
+
+  await expect(page).toHaveTitle("Multi-user authentication · santi020k auth");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("More accounts. The same hard boundary.");
+  await expect(page.getByText("Application-owned membership", { exact: true })).toBeVisible();
+  await expect(page.getByText("No authentication schema migration is required", { exact: true })).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://auth.santi020k.com/multi-user/");
+
+  const results = await new AxeBuilder({ page }).analyze();
+  const seriousViolations = results.violations.filter(({ impact }) => impact === "critical" || impact === "serious");
+  expect(seriousViolations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(
+    false,
+  );
 });

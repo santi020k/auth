@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { Miniflare } from "miniflare";
 
-import { createOwnerAuth, type OwnerAuthInstance } from "../src/index.js";
+import { createMultiUserAuth, createOwnerAuth, type OwnerAuthInstance } from "../src/index.js";
 
 const origin = "http://127.0.0.1:8787";
 const ownerEmail = "owner@example.com";
@@ -29,10 +29,12 @@ async function drainPendingTasks(): Promise<void> {
   await Promise.all(tasks);
 }
 
-function authRequest(path: string, body: Record<string, unknown>, ipAddress = "127.0.0.1"): Request {
+function authRequest(path: string, body: Record<string, unknown>, ipAddress = "127.0.0.1", cookie?: string): Request {
+  const headers = new Headers({ "CF-Connecting-IP": ipAddress, "Content-Type": "application/json", Origin: origin });
+  if (cookie) headers.set("Cookie", cookie);
   return new Request(`${origin}/api/auth${path}`, {
     body: JSON.stringify(body),
-    headers: { "CF-Connecting-IP": ipAddress, "Content-Type": "application/json", Origin: origin },
+    headers,
     method: "POST",
   });
 }
@@ -203,5 +205,186 @@ void describe("Cloudflare D1 integration", () => {
     assert.deepEqual(await response.json(), { success: true });
     await drainPendingTasks();
     assert.equal(backgroundError.current?.message, "delivery_failed");
+  });
+
+  void it("signs in multiple approved identities and applies revocation to existing sessions", async () => {
+    const approvedEmails = new Set(["first@example.com", "second@example.com"]);
+    const deliveredCodes = new Map<string, string>();
+    const multiUserAuth = createMultiUserAuth({
+      appName: "Multi-user auth integration test",
+      applicationOrigin: origin,
+      authServerURL: origin,
+      authorizeEmail: (email) => approvedEmails.has(email),
+      cookiePrefix: "integration-members",
+      database,
+      secret: "multi-user-test-secret-that-is-at-least-32-characters",
+      sendVerificationOTP: ({ email, otp }) => {
+        deliveredCodes.set(email, otp);
+        return Promise.resolve();
+      },
+      waitUntil: (task) => {
+        pendingTasks.push(task);
+      },
+    });
+    const multiUserApp = new Hono();
+    multiUserApp.all("/api/auth/*", (context) => multiUserAuth.handler(context.req.raw));
+
+    const rejectedEmail = "rejected@example.com";
+    for (const [email, ipAddress] of [
+      ["first@example.com", "127.0.0.20"],
+      [rejectedEmail, "127.0.0.21"],
+    ] as const) {
+      const response = await multiUserApp.request(
+        authRequest("/email-otp/send-verification-otp", { email, type: "sign-in" }, ipAddress),
+      );
+      assert.equal(response.status, 200);
+    }
+    await drainPendingTasks();
+    const approvedInvalidOtp = await multiUserApp.request(
+      authRequest("/sign-in/email-otp", { email: "first@example.com", otp: "000000" }, "127.0.0.20"),
+    );
+    const rejectedInvalidOtp = await multiUserApp.request(
+      authRequest("/sign-in/email-otp", { email: rejectedEmail, otp: "000000" }, "127.0.0.21"),
+    );
+    assert.equal(rejectedInvalidOtp.status, approvedInvalidOtp.status);
+    assert.deepEqual(await rejectedInvalidOtp.json(), await approvedInvalidOtp.json());
+
+    async function signIn(email: string, ipAddress: string): Promise<string> {
+      const sendResponse = await multiUserApp.request(
+        authRequest("/email-otp/send-verification-otp", { email, type: "sign-in" }, ipAddress),
+      );
+      assert.equal(sendResponse.status, 200);
+      assert.deepEqual(await sendResponse.json(), { success: true });
+      await drainPendingTasks();
+      const otp = deliveredCodes.get(email);
+      assert.ok(otp);
+
+      const signInResponse = await multiUserApp.request(authRequest("/sign-in/email-otp", { email, otp }, ipAddress));
+      assert.equal(signInResponse.status, 200, await signInResponse.clone().text());
+      const setCookie = signInResponse.headers.get("Set-Cookie");
+      assert.ok(setCookie);
+      const cookie = setCookie.split(";", 1)[0];
+      assert.ok(cookie);
+      return cookie;
+    }
+
+    const firstCookie = await signIn("first@example.com", "127.0.0.10");
+    const secondCookie = await signIn("second@example.com", "127.0.0.11");
+    assert.equal(
+      (await multiUserAuth.resolveSession(new Headers({ Cookie: firstCookie })))?.email,
+      "first@example.com",
+    );
+    assert.equal(
+      (await multiUserAuth.resolveSession(new Headers({ Cookie: secondCookie })))?.email,
+      "second@example.com",
+    );
+
+    const users = await database
+      .prepare("SELECT COUNT(*) AS total FROM user WHERE email IN (?, ?)")
+      .bind("first@example.com", "second@example.com")
+      .first<{ total: number }>();
+    assert.deepEqual(users, { total: 2 });
+
+    const pendingCodeResponse = await multiUserApp.request(
+      authRequest("/email-otp/send-verification-otp", { email: "first@example.com", type: "sign-in" }, "127.0.0.13"),
+    );
+    assert.equal(pendingCodeResponse.status, 200);
+    await drainPendingTasks();
+    const pendingCode = deliveredCodes.get("first@example.com");
+    assert.ok(pendingCode);
+
+    approvedEmails.delete("first@example.com");
+    const firstUser = await database
+      .prepare("SELECT id FROM user WHERE email = ?")
+      .bind("first@example.com")
+      .first<{ id: string }>();
+    assert.ok(firstUser);
+    const refreshEligibleExpiry = Date.now() + 60 * 60 * 1000;
+    await database
+      .prepare("UPDATE session SET expiresAt = ?, updatedAt = 0 WHERE userId = ?")
+      .bind(refreshEligibleExpiry, firstUser.id)
+      .run();
+    const revokedSessionBeforeChecks = await database
+      .prepare("SELECT id, expiresAt, updatedAt FROM session WHERE userId = ? ORDER BY createdAt DESC LIMIT 1")
+      .bind(firstUser.id)
+      .first<{ expiresAt: number; id: string; updatedAt: number }>();
+    assert.ok(revokedSessionBeforeChecks);
+
+    assert.equal(await multiUserAuth.resolveSession(new Headers({ Cookie: firstCookie })), null);
+    assert.equal(
+      (await multiUserAuth.resolveSession(new Headers({ Cookie: secondCookie })))?.email,
+      "second@example.com",
+    );
+
+    const passkeyManagementResponse = await multiUserApp.request(
+      new Request(`${origin}/api/auth/passkey/generate-register-options`, {
+        headers: { Cookie: firstCookie, Origin: origin },
+      }),
+    );
+    assert.equal(passkeyManagementResponse.status, 401);
+    assert.deepEqual(await passkeyManagementResponse.json(), {
+      code: "invalid_credentials",
+      message: "invalid_credentials",
+    });
+    const revokedSessionAfterChecks = await database
+      .prepare("SELECT id, expiresAt, updatedAt FROM session WHERE userId = ? ORDER BY createdAt DESC LIMIT 1")
+      .bind(firstUser.id)
+      .first<{ expiresAt: number; id: string; updatedAt: number }>();
+    assert.deepEqual(revokedSessionAfterChecks, revokedSessionBeforeChecks);
+
+    const replacementCodeResponse = await multiUserApp.request(
+      authRequest(
+        "/email-otp/send-verification-otp",
+        { email: "second@example.com", type: "sign-in" },
+        "127.0.0.14",
+        firstCookie,
+      ),
+    );
+    assert.equal(replacementCodeResponse.status, 200);
+    await drainPendingTasks();
+    const replacementCode = deliveredCodes.get("second@example.com");
+    assert.ok(replacementCode);
+    const replacementSignInResponse = await multiUserApp.request(
+      authRequest(
+        "/sign-in/email-otp",
+        { email: "second@example.com", otp: replacementCode },
+        "127.0.0.14",
+        firstCookie,
+      ),
+    );
+    assert.equal(replacementSignInResponse.status, 200, await replacementSignInResponse.clone().text());
+    const replacementSetCookie = replacementSignInResponse.headers.get("Set-Cookie");
+    assert.ok(replacementSetCookie);
+    const replacementCookie = replacementSetCookie.split(";", 1)[0];
+    assert.ok(replacementCookie);
+    assert.equal(
+      (await multiUserAuth.resolveSession(new Headers({ Cookie: replacementCookie })))?.email,
+      "second@example.com",
+    );
+
+    const sessionsBeforeRevokedSignIn = await database
+      .prepare("SELECT COUNT(*) AS total FROM session WHERE userId = (SELECT id FROM user WHERE email = ?)")
+      .bind("first@example.com")
+      .first<{ total: number }>();
+    const revokedSignInResponse = await multiUserApp.request(
+      authRequest("/sign-in/email-otp", { email: "first@example.com", otp: pendingCode }, "127.0.0.13", firstCookie),
+    );
+    assert.notEqual(revokedSignInResponse.status, 200);
+    assert.equal(revokedSignInResponse.headers.get("Set-Cookie"), null);
+    const sessionsAfterRevokedSignIn = await database
+      .prepare("SELECT COUNT(*) AS total FROM session WHERE userId = (SELECT id FROM user WHERE email = ?)")
+      .bind("first@example.com")
+      .first<{ total: number }>();
+    assert.deepEqual(sessionsAfterRevokedSignIn, sessionsBeforeRevokedSignIn);
+
+    const rejectedResponse = await multiUserApp.request(
+      authRequest("/email-otp/send-verification-otp", { email: rejectedEmail, type: "sign-in" }, "127.0.0.12"),
+    );
+    assert.equal(rejectedResponse.status, 200);
+    assert.deepEqual(await rejectedResponse.json(), { success: true });
+    await drainPendingTasks();
+    assert.equal(deliveredCodes.has(rejectedEmail), false);
+    const rejectedUser = await database.prepare("SELECT id FROM user WHERE email = ?").bind(rejectedEmail).first();
+    assert.equal(rejectedUser, null);
   });
 });

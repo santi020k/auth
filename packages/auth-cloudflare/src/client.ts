@@ -1,14 +1,14 @@
 import { passkeyClient } from "@better-auth/passkey/client";
 import type { AuthClient } from "better-auth/client";
-import { createAuthClient } from "better-auth/client";
+import { createAuthClient as createBetterAuthClient } from "better-auth/client";
 import { emailOTPClient } from "better-auth/client/plugins";
 
 const DEFAULT_BASE_PATH = "/api/auth";
 
-export interface OwnerAuthClientOptions {
-  /** Origin of the Worker that mounts the owner-auth handler. */
+export interface AuthClientOptions {
+  /** Origin of the Worker that mounts the auth handler. */
   authServerURL: string;
-  /** Path where the owner-auth handler is mounted. */
+  /** Path where the auth handler is mounted. */
   basePath?: `/${string}`;
 }
 
@@ -19,7 +19,9 @@ interface OwnerAuthClientConfiguration {
   plugins: [ReturnType<typeof emailOTPClient>, ReturnType<typeof passkeyClient>];
 }
 
-export type OwnerAuthClient = AuthClient<OwnerAuthClientConfiguration>;
+export type ApplicationAuthClient = AuthClient<OwnerAuthClientConfiguration>;
+export type OwnerAuthClientOptions = AuthClientOptions;
+export type OwnerAuthClient = ApplicationAuthClient;
 
 function normalizeAuthServerURL(value: string): string {
   let url: URL;
@@ -47,14 +49,19 @@ function normalizeBasePath(value: `/${string}` | undefined): string {
 }
 
 /**
- * Creates the browser client for the owner-only email OTP and passkey policy.
+ * Creates the browser client for the email OTP and passkey policy.
  * Credentials are always included so a UI and its auth Worker may use separate origins.
  */
-export function createOwnerAuthClient(options: OwnerAuthClientOptions): OwnerAuthClient {
-  return createAuthClient<OwnerAuthClientConfiguration>({
+export function createApplicationAuthClient(options: AuthClientOptions): ApplicationAuthClient {
+  return createBetterAuthClient<OwnerAuthClientConfiguration>({
     basePath: normalizeBasePath(options.basePath),
     baseURL: normalizeAuthServerURL(options.authServerURL),
     fetchOptions: { credentials: "include" },
     plugins: [emailOTPClient(), passkeyClient()],
   });
+}
+
+/** Backward-compatible single-owner browser client name. */
+export function createOwnerAuthClient(options: OwnerAuthClientOptions): OwnerAuthClient {
+  return createApplicationAuthClient(options);
 }
