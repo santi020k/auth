@@ -48,6 +48,7 @@ void describe("owner auth policy", () => {
     });
     assert.equal(normalizeAuthEmail(" MEMBER@EXAMPLE.COM "), "member@example.com");
     assert.equal(normalizeOwnerEmail(" OWNER@EXAMPLE.COM "), "owner@example.com");
+    assert.throws(() => normalizeAuthEmail(`${"a".repeat(243)}@example.com`), /owner_auth_email_invalid/u);
   });
 
   void it("separates the API base URL from a browser and WebAuthn origin", () => {

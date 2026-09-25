@@ -84,6 +84,10 @@ void describe("Resend authentication email", () => {
       /auth_email_recipient_invalid/u,
     );
     assert.throws(
+      () => renderLoginCodeEmail({ appName: "Example", email: `${"a".repeat(243)}@example.com`, otp: "123456" }),
+      /auth_email_recipient_invalid/u,
+    );
+    assert.throws(
       () => renderLoginCodeEmail({ appName: "Example", email: "owner@example.com", otp: "code" }),
       /auth_email_code_invalid/u,
     );

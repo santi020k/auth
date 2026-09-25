@@ -90,6 +90,7 @@ const auth = createMultiUserAuth({
   database: env.AUTH_DB,
   secret: env.AUTH_SECRET,
   sendVerificationOTP: ({ email, otp }) => sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
 });
 ```
 

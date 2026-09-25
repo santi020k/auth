@@ -5,6 +5,7 @@ import { captcha, emailOTP } from "better-auth/plugins";
 
 const DEFAULT_SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
+const MAX_EMAIL_LENGTH = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const TABLE_PREFIX_PATTERN = /^[a-z][a-z0-9_]{0,30}$/u;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -121,7 +122,7 @@ interface AuthRuntimeOptions {
   sendVerificationOTP(email: AuthEmail): Promise<void>;
   sessionExpiresIn?: number;
   sessionUpdateAge?: number;
-  waitUntil?(task: Promise<void>): void;
+  waitUntil(task: Promise<void>): void;
 }
 
 export interface AuthPolicy {
@@ -252,7 +253,7 @@ function normalizeCookiePrefix(value: string): string {
 
 export function normalizeAuthEmail(value: string): string {
   const email = value.trim().toLowerCase();
-  if (!EMAIL_PATTERN.test(email)) throw new Error("owner_auth_email_invalid");
+  if (email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email)) throw new Error("owner_auth_email_invalid");
   return email;
 }
 
@@ -535,6 +536,13 @@ export function enforceOwnerAuthRequest(policy: OwnerAuthPolicy, request: Reques
   return enforceAuthRequest(policy, (email) => email === policy.ownerEmail, "invalid_owner_credentials", request);
 }
 
+function isEmailOtpSendRequest(policy: AuthPolicy, request: Request): boolean {
+  const url = new URL(request.url);
+  return (
+    request.method.toUpperCase() === "POST" && url.pathname === `${policy.basePath}/email-otp/send-verification-otp`
+  );
+}
+
 function isSessionIndependentRequest(policy: AuthPolicy, request: Request): boolean {
   const method = request.method.toUpperCase();
   const path = new URL(request.url).pathname;
@@ -698,7 +706,7 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
             }
           };
           const task = deferLifecycleTask(deliver);
-          if (options.waitUntil) options.waitUntil(task);
+          options.waitUntil(task);
           return Promise.resolve();
         },
         storeOTP: "hashed",
@@ -788,7 +796,7 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
         return withCors(policy, request, errorResponse(401, invalidCredentialsCode));
       }
       const response = await auth.handler(request);
-      return withCors(policy, request, response);
+      return withCors(policy, request, isEmailOtpSendRequest(policy, request) ? genericEmailResponse() : response);
     },
     listSessions: (userId: string): Promise<AuthSessionSummary[]> =>
       listAuthSessionsForUser(options.database, policy.tableNames.session, userId),

@@ -8,7 +8,9 @@
   preserve the existing Cloudflare compatibility exports; add optional OAuth, Turnstile, recent-authentication guards,
   session lifecycle controls, isolated migration namespaces, localized delivery, and Web Crypto recovery primitives.
   The public package retains the v0.3 origin aliases, versioned-secret rotation, configurable email OTP limits, exact
-  credentialed CORS, and source-compatible session identity shape.
+  credentialed CORS, and source-compatible session identity shape. The pre-1.0 policy and instance interfaces now
+  require resolved origin/table metadata, session-management methods, and lifecycle fields from `resolveSession`;
+  manually-authored policy literals and test doubles must migrate as documented in the package README.
 
 ### Patch Changes
 

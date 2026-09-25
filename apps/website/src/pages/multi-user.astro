@@ -23,6 +23,7 @@ const setupExamples = [
   secret: env.AUTH_SECRET,
   sendVerificationOTP: ({ email, otp }) =>
     sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
 });
 
 app.all("/api/auth/*", (context) =>
@@ -49,6 +50,7 @@ const auth = createMultiUserAuth({
   secret: env.AUTH_SECRET,
   sendVerificationOTP: ({ email, otp }) =>
     sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
 });`,
     label: "Static allowlist",
     language: "typescript",

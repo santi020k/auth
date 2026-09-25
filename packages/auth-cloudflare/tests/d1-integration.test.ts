@@ -19,6 +19,11 @@ let database: D1Database;
 let deliveredCode: DeliveredCode | null = null;
 let harness: AuthD1TestHarness | undefined;
 let requestIpSuffix = 1;
+const backgroundTasks: Promise<void>[] = [];
+
+function waitUntilForTest(task: Promise<void>): void {
+  backgroundTasks.push(task);
+}
 
 function authRequest(path: string, body: Record<string, unknown>): Request {
   requestIpSuffix += 1;
@@ -61,12 +66,14 @@ before(async () => {
       deliveredCode = email;
       return Promise.resolve();
     },
+    waitUntil: waitUntilForTest,
   });
   app = new Hono();
   app.all("/api/auth/*", (context) => auth.handler(context.req.raw));
 });
 
 after(async () => {
+  await Promise.all(backgroundTasks);
   await harness?.dispose();
 });
 
@@ -87,6 +94,7 @@ void describe("Cloudflare D1 integration", () => {
           return Promise.resolve();
         },
         tablePrefix: "isolated",
+        waitUntil: waitUntilForTest,
       });
       const send = await prefixedAuth.handler(
         authRequest("/email-otp/send-verification-otp", { email: ownerEmail, type: "sign-in" }),
@@ -207,6 +215,41 @@ void describe("Cloudflare D1 integration", () => {
     assert.ok(events.some((event) => event.type === "email_otp_delivery_suppressed"));
   });
 
+  void it("keeps approved and rejected code requests indistinguishable when rate limited", async () => {
+    const limitedAuth = createOwnerAuth({
+      appName: "Rate-limit enumeration integration test",
+      baseURL: origin,
+      cookiePrefix: "integration-rate-enumeration",
+      database,
+      emailOtpRateLimit: { max: 1, window: 600 },
+      ownerEmail: "rate-owner@example.com",
+      secret: "integration-test-secret-that-is-at-least-32-characters",
+      sendVerificationOTP: () => Promise.resolve(),
+      waitUntil: waitUntilForTest,
+    });
+    const requestCode = (email: string): Request =>
+      new Request(`${origin}/api/auth/email-otp/send-verification-otp`, {
+        body: JSON.stringify({ email, type: "sign-in" }),
+        headers: {
+          "CF-Connecting-IP": "127.0.0.200",
+          "Content-Type": "application/json",
+          Origin: origin,
+        },
+        method: "POST",
+      });
+
+    const responses = await Promise.all([
+      limitedAuth.handler(requestCode("rate-owner@example.com")),
+      limitedAuth.handler(requestCode("rate-owner@example.com")),
+      limitedAuth.handler(requestCode("rejected-rate@example.com")),
+      limitedAuth.handler(requestCode("rejected-rate@example.com")),
+    ]);
+    for (const response of responses) {
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { success: true });
+    }
+  });
+
   void it("returns exact credentialed CORS headers on split-origin responses", async () => {
     const splitAuth = createOwnerAuth({
       appName: "Split-origin integration test",
@@ -217,6 +260,7 @@ void describe("Cloudflare D1 integration", () => {
       ownerEmail,
       secret: "integration-test-secret-that-is-at-least-32-characters",
       sendVerificationOTP: () => Promise.resolve(),
+      waitUntil: waitUntilForTest,
     });
     const request = new Request(`${origin}/api/auth/get-session`, {
       headers: { Origin: "http://localhost:4321" },
@@ -241,11 +285,13 @@ void describe("Cloudflare D1 integration", () => {
         return Promise.resolve();
       },
       turnstile: { secretKey: "turnstile-test-secret-at-least-20-characters" },
+      waitUntil: waitUntilForTest,
     });
     const request = authRequest("/email-otp/send-verification-otp", { email: ownerEmail, type: "sign-in" });
     request.headers.set("CF-Connecting-IP", "127.0.0.99");
     const response = await protectedAuth.handler(request);
-    assert.equal(response.status, 400);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { success: true });
     assert.equal(delivered, false);
   });
 
@@ -263,6 +309,7 @@ void describe("Cloudflare D1 integration", () => {
         deliveredCodes.set(email, otp);
         return Promise.resolve();
       },
+      waitUntil: waitUntilForTest,
     });
     const multiUserApp = new Hono();
     multiUserApp.all("/api/auth/*", (context) => multiUserAuth.handler(context.req.raw));
@@ -332,6 +379,7 @@ void describe("Cloudflare D1 integration", () => {
         deliveryCount += 1;
         return Promise.resolve();
       },
+      waitUntil: waitUntilForTest,
     });
     const multiUserApp = new Hono();
     multiUserApp.all("/api/auth/*", (context) => multiUserAuth.handler(context.req.raw));
@@ -371,6 +419,7 @@ void describe("Cloudflare D1 integration", () => {
           return Promise.resolve();
         },
         tablePrefix: "managed",
+        waitUntil: waitUntilForTest,
       });
 
       const suppressed = await managedAuth.handler(

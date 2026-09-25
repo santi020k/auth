@@ -27,6 +27,12 @@ and the original two-field `AuthSessionIdentity` assignment contract also remain
 include optional typed lifecycle fields (`authenticatedAt`, `expiresAt`, and `sessionId`). New code should use
 `browserOrigin` and `baseURL`; providing a legacy and replacement origin option with different values fails closed.
 
+Version 0.4 intentionally expands three pre-1.0 TypeScript contracts. Code that manually constructs an `AuthPolicy`
+must use `resolveOwnerAuthPolicy` or `resolveMultiUserAuthPolicy` so the new `baseURL`, `origin`, and `tableNames` fields
+are present. Test doubles typed as `OwnerAuthInstance` or `MultiUserAuthInstance` must add the session inventory,
+revocation, and emergency-lockout methods. Their `resolveSession` implementation must return the lifecycle fields in
+`ResolvedAuthSessionIdentity`. Runtime consumers that call the factory functions require no adapter.
+
 ## Policy
 
 - Email OTPs are six digits, expire after ten minutes, allow five verification attempts, and are stored hashed.
@@ -68,6 +74,7 @@ const auth = createMultiUserAuth({
   database: env.DB,
   secret: env.AUTH_SECRET,
   sendVerificationOTP: ({ email, otp }) => sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
 });
 ```
 
@@ -83,11 +90,16 @@ const ownerAuth = createOwnerAuth({
   ownerEmail: env.OWNER_EMAIL,
   secret: env.AUTH_SECRET,
   sendVerificationOTP: ({ email, otp }) => sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
 });
 ```
 
 The API must still return credentialed CORS headers for that exact browser origin. `browserOrigin` does not accept an
 origin list and does not create a shared cookie domain.
+
+`waitUntil` is required because code delivery runs outside the response path to keep approved and rejected addresses
+indistinguishable even when the provider fails. On Workers, pass `context.executionCtx.waitUntil`; do not substitute an
+untracked promise that the runtime may terminate after sending the response.
 
 Set `tablePrefix` when the consumer database already contains generic tables such as `user` or `session`. Generate its
 app-owned migration with the same prefix through `@santi020k/auth-migrations`; a prefix is part of the persistent storage

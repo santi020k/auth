@@ -35,6 +35,7 @@ const integrationExamples = [
   secret: env.AUTH_SECRET,
   sendVerificationOTP: ({ email, otp }) =>
     sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
 });
 
 app.all("/api/auth/*", (context) =>
@@ -55,6 +56,7 @@ app.all("/api/auth/*", (context) =>
   secret: env.AUTH_SECRET,
   sendVerificationOTP: ({ email, otp }) =>
     sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
 });`,
     label: "Multi-user",
     language: "typescript",

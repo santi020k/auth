@@ -84,7 +84,7 @@ function requiredText(value: string, code: string): string {
 
 function normalizeEmail(value: string): string {
   const email = value.trim().toLowerCase();
-  if (!EMAIL_PATTERN.test(email)) throw new Error("auth_email_recipient_invalid");
+  if (email.length > 254 || !EMAIL_PATTERN.test(email)) throw new Error("auth_email_recipient_invalid");
   return email;
 }
 
