@@ -34,7 +34,7 @@
     "release:version": "changeset version && pnpm install --lockfile-only",
     "release:pack": "pnpm --dir packages/auth-cloudflare pack --dry-run",
     "test": "pnpm --recursive --if-present run test",
-    "test:e2e": "pnpm --filter @santi020k/auth-website run test:e2e",
+    "test:e2e": "pnpm --filter @santi020k/auth-playground run test:e2e && pnpm --filter @santi020k/auth-website run test:e2e",
     "typecheck": "pnpm --recursive --if-present run typecheck",
     "verify": "pnpm --filter @santi020k/auth-cloudflare run build && pnpm run format:check && pnpm run lint && pnpm run build && pnpm run typecheck && pnpm run test && pnpm run test:e2e && pnpm run check:package && pnpm run check:security",
     "changeset": "changeset"

@@ -50,6 +50,9 @@ jobs:
           node-version: 22.23.1
           registry-url: https://registry.npmjs.org
 
+      - name: Install an OIDC-capable npm CLI
+        run: npm install --global npm@12.1.0
+
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @santi020k/auth-website exec playwright install --with-deps chromium
       - run: pnpm verify
@@ -73,7 +76,7 @@ jobs:
           pack_metadata="$RUNNER_TEMP/auth-package-pack.json"
 
           if [[ "$private_package" == "true" ]]; then
-            echo "::error::The package is still private. Complete the two-consumer production gate before publishing."
+            echo "::error::The package manifest is still marked private."
             exit 1
           fi
 
@@ -89,9 +92,10 @@ jobs:
 
           if npm view "$package_name" name >/dev/null 2>&1; then
             echo "package_exists=true" >> "$GITHUB_OUTPUT"
+            echo "initial_publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::$package_name does not exist on npm yet. Its initial publication must be completed manually after the production-readiness gate, then this workflow can be rerun to reconcile tags and future OIDC releases."
-            exit 1
+            echo "package_exists=false" >> "$GITHUB_OUTPUT"
+            echo "initial_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
           mkdir -p "$pack_destination"
@@ -119,10 +123,20 @@ jobs:
           echo "name=$package_name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Publish package with npm trusted publishing
+      - name: Publish package
         if: steps.release.outputs.publish == 'true'
         working-directory: packages/auth-cloudflare
-        run: pnpm publish --access public --no-git-checks
+        env:
+          # npm cannot attach a trusted publisher before the package exists. The
+          # production environment supplies this secret for the initial release
+          # only; subsequent releases use GitHub OIDC with an empty value here.
+          NODE_AUTH_TOKEN: ${{ steps.release.outputs.initial_publish == 'true' && secrets.NPM_TOKEN || '' }}
+        run: |
+          if [[ "${{ steps.release.outputs.initial_publish }}" == "true" && -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "::error::The initial npm publication requires the production NPM_TOKEN secret."
+            exit 1
+          fi
+          npm publish --access public
 
       - name: Verify npm publication
         shell: bash
@@ -133,6 +147,21 @@ jobs:
           set -euo pipefail
           published=$(npm view "$PACKAGE_NAME@$VERSION" version)
           test "$published" = "$VERSION"
+
+      - name: Load production website deployment secrets
+        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
+        with:
+          method: oidc
+          identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+          secret-path: /github/deploy-website
+
+      - name: Deploy documentation website
+        run: pnpm --filter @santi020k/auth-website run deploy
+
+      - name: Verify documentation website
+        run: curl --fail --retry 6 --retry-delay 10 --retry-all-errors https://auth.santi020k.com/
 
       - name: Create immutable version tags and GitHub Release
         shell: bash

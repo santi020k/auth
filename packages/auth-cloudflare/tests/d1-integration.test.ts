@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -9,73 +10,6 @@ import { createOwnerAuth, type OwnerAuthInstance } from "../src/index.js";
 
 const origin = "http://127.0.0.1:8787";
 const ownerEmail = "owner@example.com";
-const schema = `
-CREATE TABLE "user" (
-  "id" TEXT PRIMARY KEY NOT NULL,
-  "name" TEXT NOT NULL,
-  "email" TEXT NOT NULL UNIQUE,
-  "emailVerified" INTEGER NOT NULL DEFAULT 0,
-  "image" TEXT,
-  "createdAt" INTEGER NOT NULL,
-  "updatedAt" INTEGER NOT NULL
-);
-CREATE TABLE "session" (
-  "id" TEXT PRIMARY KEY NOT NULL,
-  "userId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
-  "token" TEXT NOT NULL UNIQUE,
-  "expiresAt" INTEGER NOT NULL,
-  "ipAddress" TEXT,
-  "userAgent" TEXT,
-  "createdAt" INTEGER NOT NULL,
-  "updatedAt" INTEGER NOT NULL
-);
-CREATE INDEX "session_userId_idx" ON "session" ("userId");
-CREATE TABLE "account" (
-  "id" TEXT PRIMARY KEY NOT NULL,
-  "userId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
-  "accountId" TEXT NOT NULL,
-  "providerId" TEXT NOT NULL,
-  "accessToken" TEXT,
-  "refreshToken" TEXT,
-  "accessTokenExpiresAt" INTEGER,
-  "refreshTokenExpiresAt" INTEGER,
-  "scope" TEXT,
-  "idToken" TEXT,
-  "password" TEXT,
-  "createdAt" INTEGER NOT NULL,
-  "updatedAt" INTEGER NOT NULL
-);
-CREATE INDEX "account_userId_idx" ON "account" ("userId");
-CREATE TABLE "verification" (
-  "id" TEXT PRIMARY KEY NOT NULL,
-  "identifier" TEXT NOT NULL,
-  "value" TEXT NOT NULL,
-  "expiresAt" INTEGER NOT NULL,
-  "createdAt" INTEGER NOT NULL,
-  "updatedAt" INTEGER NOT NULL
-);
-CREATE INDEX "verification_identifier_idx" ON "verification" ("identifier");
-CREATE TABLE "passkey" (
-  "id" TEXT PRIMARY KEY NOT NULL,
-  "name" TEXT,
-  "publicKey" TEXT NOT NULL,
-  "userId" TEXT NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
-  "credentialID" TEXT NOT NULL UNIQUE,
-  "counter" INTEGER NOT NULL,
-  "deviceType" TEXT NOT NULL,
-  "backedUp" INTEGER NOT NULL,
-  "transports" TEXT,
-  "createdAt" INTEGER,
-  "aaguid" TEXT
-);
-CREATE INDEX "passkey_userId_idx" ON "passkey" ("userId");
-CREATE TABLE "rateLimit" (
-  "id" TEXT PRIMARY KEY NOT NULL,
-  "key" TEXT NOT NULL UNIQUE,
-  "count" INTEGER NOT NULL,
-  "lastRequest" INTEGER NOT NULL
-);
-`;
 
 interface DeliveredCode {
   email: string;
@@ -87,11 +21,18 @@ let app: Hono;
 let database: D1Database;
 let deliveredCode: DeliveredCode | null = null;
 let miniflare: Miniflare | undefined;
+let pendingTasks: Promise<void>[] = [];
 
-function authRequest(path: string, body: Record<string, unknown>): Request {
+async function drainPendingTasks(): Promise<void> {
+  const tasks = pendingTasks;
+  pendingTasks = [];
+  await Promise.all(tasks);
+}
+
+function authRequest(path: string, body: Record<string, unknown>, ipAddress = "127.0.0.1"): Request {
   return new Request(`${origin}/api/auth${path}`, {
     body: JSON.stringify(body),
-    headers: { "CF-Connecting-IP": "127.0.0.1", "Content-Type": "application/json", Origin: origin },
+    headers: { "CF-Connecting-IP": ipAddress, "Content-Type": "application/json", Origin: origin },
     method: "POST",
   });
 }
@@ -119,6 +60,7 @@ before(async () => {
     ],
   });
   database = await miniflare.getD1Database("AUTH_DB");
+  const schema = await readFile(fileURLToPath(new URL("../../schema/d1.sql", import.meta.url)), "utf8");
   const statements = schema
     .split(";")
     .map((statement) => statement.trim())
@@ -126,7 +68,8 @@ before(async () => {
   await database.batch(statements.map((statement) => database.prepare(statement)));
   auth = createOwnerAuth({
     appName: "Owner auth integration test",
-    baseURL: origin,
+    applicationOrigin: origin,
+    authServerURL: origin,
     cookiePrefix: "integration-owner",
     database,
     ownerEmail,
@@ -134,6 +77,9 @@ before(async () => {
     sendVerificationOTP: (email) => {
       deliveredCode = email;
       return Promise.resolve();
+    },
+    waitUntil: (task) => {
+      pendingTasks.push(task);
     },
   });
   app = new Hono();
@@ -153,6 +99,7 @@ void describe("Cloudflare D1 integration", () => {
       }),
     );
     assert.equal(sendResponse.status, 200);
+    await drainPendingTasks();
     assert.ok(deliveredCode);
     const code = deliveredCode.otp;
     assert.match(code, /^\d{6}$/u);
@@ -185,7 +132,7 @@ void describe("Cloudflare D1 integration", () => {
     assert.ok(rateLimit && rateLimit.total > 0);
   });
 
-  void it("does not persist or deliver an OTP for another email", async () => {
+  void it("does not deliver an OTP or create a user for another email", async () => {
     deliveredCode = null;
     const response = await app.request(
       authRequest("/email-otp/send-verification-otp", {
@@ -194,11 +141,67 @@ void describe("Cloudflare D1 integration", () => {
       }),
     );
     assert.equal(response.status, 200);
+    assert.equal(pendingTasks.length, 1);
+    await drainPendingTasks();
     assert.equal(deliveredCode, null);
-    const row = await database
-      .prepare("SELECT id FROM verification WHERE identifier = ?")
+    const verification = await database
+      .prepare("SELECT value FROM verification WHERE identifier = ?")
       .bind("sign-in-otp-not-the-owner@example.com")
+      .first<{ value: string }>();
+    assert.ok(verification);
+    assert.notEqual(verification.value, "123456");
+    const user = await database
+      .prepare("SELECT id FROM user WHERE email = ?")
+      .bind("not-the-owner@example.com")
       .first();
-    assert.equal(row, null);
+    assert.equal(user, null);
+  });
+
+  void it("keeps invalid and rate-limited OTP send responses indistinguishable", async () => {
+    const inputs: Record<string, unknown>[] = [
+      { email: ownerEmail, type: "invalid" },
+      { email: "not-the-owner@example.com", type: "invalid" },
+      ...Array.from({ length: 5 }, () => ({ email: ownerEmail, type: "sign-in" })),
+      ...Array.from({ length: 5 }, () => ({ email: "not-the-owner@example.com", type: "sign-in" })),
+    ];
+
+    for (const input of inputs) {
+      const response = await app.request(authRequest("/email-otp/send-verification-otp", input));
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { success: true });
+      await drainPendingTasks();
+    }
+  });
+
+  void it("keeps a synchronously throwing delivery adapter outside the response path", async () => {
+    const backgroundError: { current: Error | null } = { current: null };
+    const throwingOwnerEmail = "throwing-owner@example.com";
+    const throwingAuth = createOwnerAuth({
+      appName: "Throwing delivery integration test",
+      applicationOrigin: origin,
+      authServerURL: origin,
+      cookiePrefix: "throwing-owner",
+      database,
+      ownerEmail: throwingOwnerEmail,
+      secret: "throwing-test-secret-that-is-at-least-32-characters",
+      sendVerificationOTP: () => {
+        throw new Error("delivery_failed");
+      },
+      waitUntil: (task) => {
+        pendingTasks.push(
+          task.catch((error: unknown) => {
+            backgroundError.current = error instanceof Error ? error : new Error("unknown_delivery_error");
+          }),
+        );
+      },
+    });
+
+    const response = await throwingAuth.handler(
+      authRequest("/email-otp/send-verification-otp", { email: throwingOwnerEmail, type: "sign-in" }, "127.0.0.2"),
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { success: true });
+    await drainPendingTasks();
+    assert.equal(backgroundError.current?.message, "delivery_failed");
   });
 });

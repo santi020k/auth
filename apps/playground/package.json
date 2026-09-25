@@ -10,16 +10,16 @@
     "db:apply": "wrangler d1 migrations apply auth-playground-development --local",
     "dev": "pnpm run build:client && wrangler dev --port 8793",
     "lint": "eslint src --max-warnings=0",
+    "test:e2e": "playwright test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@better-auth/passkey": "catalog:",
     "@santi020k/auth-cloudflare": "workspace:*",
-    "better-auth": "catalog:",
     "hono": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
+    "@playwright/test": "catalog:",
     "esbuild": "catalog:",
     "typescript": "catalog:",
     "wrangler": "catalog:"

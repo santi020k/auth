@@ -1,10 +1,7 @@
-import { passkeyClient } from "@better-auth/passkey/client";
-import { createAuthClient } from "better-auth/client";
-import { emailOTPClient } from "better-auth/client/plugins";
+import { createOwnerAuthClient } from "@santi020k/auth-cloudflare/client";
 
-const authClient = createAuthClient({
-  baseURL: window.location.origin,
-  plugins: [emailOTPClient(), passkeyClient()],
+const authClient = createOwnerAuthClient({
+  authServerURL: window.location.origin,
 });
 
 const emailInput = document.querySelector<HTMLInputElement>("#email");
@@ -33,6 +30,22 @@ async function refreshSession(): Promise<void> {
   session.textContent = identity === null ? "Signed out" : JSON.stringify(identity, null, 2);
 }
 
+async function latestLocalCode(): Promise<string> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const response = await fetch("/api/dev/latest-code", { headers: { Accept: "application/json" } });
+    if (response.ok) {
+      const latest: unknown = await response.json();
+      if (typeof latest === "object" && latest !== null && "otp" in latest && typeof latest.otp === "string") {
+        return latest.otp;
+      }
+    }
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 50);
+    });
+  }
+  throw new Error("No local code was captured.");
+}
+
 async function run(action: () => Promise<void>): Promise<void> {
   status.textContent = "Working…";
   status.dataset.kind = "pending";
@@ -48,13 +61,7 @@ requiredElement(document.querySelector<HTMLButtonElement>("#send-code"), "send-c
   void run(async () => {
     const result = await authClient.emailOtp.sendVerificationOtp({ email: email.value, type: "sign-in" });
     if (result.error) throw new Error(result.error.message ?? "Could not send the code.");
-    const response = await fetch("/api/dev/latest-code", { headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error("The local code inbox is unavailable.");
-    const latest: unknown = await response.json();
-    if (typeof latest !== "object" || latest === null || !("otp" in latest) || typeof latest.otp !== "string") {
-      throw new Error("No local code was captured.");
-    }
-    otp.value = latest.otp;
+    otp.value = await latestLocalCode();
     message("Code generated locally and filled in.");
   });
 });
