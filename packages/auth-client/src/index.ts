@@ -124,11 +124,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizedErrorCode(value: string): string {
-  const code = value
+  const sanitized = value
+    .slice(0, 256)
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "_")
-    .replace(/^_+|_+$/gu, "");
+    .replace(/[^a-z0-9]+/gu, "_");
+  const start = sanitized.startsWith("_") ? 1 : 0;
+  const end = sanitized.endsWith("_") ? sanitized.length - 1 : sanitized.length;
+  const code = sanitized.slice(start, Math.max(start, end));
   return code || "auth_request_failed";
 }
 

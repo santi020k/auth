@@ -56,6 +56,7 @@ void describe("auth browser client", () => {
       message: "Authentication request failed",
       status: null,
     });
+    assert.equal(normalizeAuthClientError({ code: "_".repeat(100_000) }).code, "auth_request_failed");
   });
 
   void it("exposes stable result-based helpers without returning session tokens", async () => {
