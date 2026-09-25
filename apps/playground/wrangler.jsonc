@@ -19,7 +19,8 @@
   ],
   "vars": {
     "ALLOW_LOCAL_CODE": "true",
-    "AUTH_BASE_URL": "http://127.0.0.1:8793",
+    "APPLICATION_ORIGIN": "http://localhost:8793",
+    "AUTH_SERVER_URL": "http://localhost:8793",
     "AUTH_SECRET": "local-development-secret-replace-before-deploying",
     "OWNER_EMAIL": "owner@example.com",
   },

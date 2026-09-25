@@ -8,6 +8,8 @@ coverage/
 .cspellcache
 apps/playground/public/app.js
 apps/playground/public/app.js.map
+apps/playground/playwright-report/
+apps/playground/test-results/
 apps/website/playwright-report/
 apps/website/test-results/
 .DS_Store

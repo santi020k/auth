@@ -24,6 +24,7 @@ Use `pnpm commit` for the repository's Commitprompt workflow. Keep migrations ad
 application. Do not introduce shared databases, secrets, cookies, sessions, passkeys, relying-party IDs, or recovery
 policy between consumers.
 
-Changes that affect a publishable package need a Changeset. The package remains private until the release gates in
-`docs/production-readiness.md` are complete. Use `pnpm release:pack` to inspect the exact npm tarball before proposing a
-release. Release preparation and publication follow `docs/releasing.md`; do not create package tags manually.
+Changes that affect the public package need a Changeset. Use `pnpm release:pack` to inspect the exact npm tarball before
+proposing a release. Release preparation and publication follow `docs/releasing.md`; never publish from a workstation
+or create package tags manually. The current public `0.x` line is experimental, so externally visible changes need
+clear migration notes even when backward compatibility is not promised.

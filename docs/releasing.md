@@ -1,12 +1,11 @@
 # Package releases
 
-`@santi020k/auth-cloudflare` is not currently published to npm. Its `private: true` manifest flag is an intentional
-release gate, not a registry or GitHub Actions failure. Publication remains blocked until two independent consumers
-complete the production evidence in [production readiness](production-readiness.md).
+`@santi020k/auth-cloudflare` is a public experimental `0.x` package. Every publication is produced from merged `main`
+by `.github/workflows/release-package.yml`; never publish from a developer workstation.
 
 ## Version preparation
 
-Package changes require a Changeset. Prepare a release only from an up-to-date `main` branch:
+Package changes require a Changeset. Prepare a release from an up-to-date `main` branch:
 
 ```sh
 git switch main
@@ -18,38 +17,44 @@ pnpm release:pack
 ```
 
 Commit the generated version and changelog changes, obtain the required independent pre-push review, then open a pull
-request from `release/v<semver>` to `main`. The release pull request must include consumer evidence, migration notes,
-and a rollback or forward-recovery plan.
+request from `release/v<semver>` to `main`. Include migration notes and a rollback or forward-recovery plan. Merge only
+after required checks and review findings are resolved.
 
-## Initial npm publication
+## Initial GitHub Actions publication
 
-npm requires a package to exist before a trusted publisher can be attached. After the two-consumer gate passes, remove
-`private: true` in the release pull request and perform the initial scoped public publication manually with 2FA:
+npm requires the package to exist before a trusted publisher can be attached. Bootstrap the first release without a
+manual publish:
 
-```sh
-git switch main
-git pull --ff-only
-pnpm --dir packages/auth-cloudflare publish --access public
-```
+1. Create a short-lived, granular npm access token scoped only to publishing `@santi020k/auth-cloudflare`, with the
+   minimum lifetime and permissions required for this one release. Enable bypass 2FA because GitHub Actions cannot
+   complete an interactive second-factor prompt; revoke the token immediately after the bootstrap publish.
+2. Store it as the `NPM_TOKEN` secret in the GitHub `production` environment. Never place it in repository files, shell
+   history, workflow logs, or pull-request text.
+3. Merge the reviewed `release/v0.2.0` pull request. The release workflow verifies the exact merged revision, uses
+   `NPM_TOKEN` only when the registry confirms this is the initial publication, verifies npm, and only then deploys and
+   smoke-tests the documentation site.
+4. Verify the published version, provenance metadata, immutable tags, GitHub Release, and deployed documentation.
+5. In npm package settings, configure a GitHub Actions trusted publisher with:
+   - GitHub owner: `santi020k`
+   - Repository: `auth`
+   - Workflow: `release-package.yml`
+   - Environment: `production`
+   - Allowed action: direct `npm publish` (not only staged publishing)
+6. Delete the `NPM_TOKEN` GitHub environment secret and revoke the bootstrap token immediately.
 
-That manual exception is for the initial publication only. Immediately afterward, configure npm trusted publishing for:
+The repository is public and `publishConfig.provenance` is enabled, so eligible GitHub Actions publications include npm
+provenance. Do not keep a long-lived registry token as a fallback.
 
-- GitHub owner: `santi020k`
-- Repository: `auth`
-- Workflow: `release-package.yml`
-- Environment: `production`
-- Allowed action: direct publish
+## Subsequent OIDC releases
 
-The repository is private, so npm cannot generate a public provenance attestation yet. `publishConfig.provenance`
-therefore remains `false`; enable it only if the repository becomes public and the npm provenance prerequisites are
-satisfied.
+After the trusted publisher is configured, merging an exact `release/v<semver>` pull request runs `Release package`.
+The workflow re-runs the repository gate, inspects the package tarball, publishes through npm OIDC, verifies the
+registry version, deploys and smoke-tests the website, then creates immutable `v<semver>` and package-version tags plus
+a GitHub Release from the merged `main` commit. A manual dispatch on `main` is reserved for idempotent recovery.
 
-## Automated releases
+Before declaring the release complete, verify that the tags point to the merged commit, the GitHub Release exists, npm
+serves the intended version, and the documentation site is live. Then delete the release branch and fast-forward local
+`main`.
 
-After the trusted publisher exists, merging an exact `release/v<semver>` pull request runs `Release package`. The
-workflow re-runs the complete repository gate, inspects the package tarball, publishes through npm OIDC, verifies the
-registry version, then creates immutable `v<semver>` and package-version tags plus a GitHub Release from the merged
-`main` commit. A manual dispatch on `main` is reserved for idempotent recovery.
-
-Never move or replace a published tag. Recover a failed publication with the same workflow when it is safe and
-idempotent, or prepare a new version when registry state already changed.
+Never move or replace a published tag or npm version. Recover an interrupted workflow only when its steps are
+idempotent; otherwise prepare a new patch release.

@@ -3,9 +3,10 @@ import { Hono } from "hono";
 
 interface Bindings {
   ALLOW_LOCAL_CODE: string;
+  APPLICATION_ORIGIN: string;
   ASSETS: Fetcher;
-  AUTH_BASE_URL: string;
   AUTH_DB: D1Database;
+  AUTH_SERVER_URL: string;
   AUTH_SECRET: string;
   OWNER_EMAIL: string;
 }
@@ -34,12 +35,16 @@ app.get("/api/dev/latest-code", async (context) => {
 app.get("/api/session", async (context) => {
   const auth = createOwnerAuth({
     appName: "santi020k auth playground",
-    baseURL: context.env.AUTH_BASE_URL,
+    applicationOrigin: context.env.APPLICATION_ORIGIN,
+    authServerURL: context.env.AUTH_SERVER_URL,
     cookiePrefix: "santi-auth-playground",
     database: context.env.AUTH_DB,
     ownerEmail: context.env.OWNER_EMAIL,
     secret: context.env.AUTH_SECRET,
     sendVerificationOTP: () => Promise.resolve(),
+    waitUntil: (task) => {
+      context.executionCtx.waitUntil(task);
+    },
   });
   return context.json(await auth.resolveSession(context.req.raw.headers), 200, { "Cache-Control": "no-store" });
 });
@@ -47,7 +52,8 @@ app.get("/api/session", async (context) => {
 app.all("/api/auth/*", async (context) => {
   const auth = createOwnerAuth({
     appName: "santi020k auth playground",
-    baseURL: context.env.AUTH_BASE_URL,
+    applicationOrigin: context.env.APPLICATION_ORIGIN,
+    authServerURL: context.env.AUTH_SERVER_URL,
     cookiePrefix: "santi-auth-playground",
     database: context.env.AUTH_DB,
     ownerEmail: context.env.OWNER_EMAIL,
@@ -62,6 +68,9 @@ app.all("/api/auth/*", async (context) => {
       )
         .bind("latest", normalizeOwnerEmail(email), otp, Date.now())
         .run();
+    },
+    waitUntil: (task) => {
+      context.executionCtx.waitUntil(task);
     },
   });
   return auth.handler(context.req.raw);

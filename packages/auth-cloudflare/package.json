@@ -1,7 +1,6 @@
 {
   "name": "@santi020k/auth-cloudflare",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "description": "Owner-only Better Auth policy for Hono applications running on Cloudflare Workers and D1.",
   "license": "MIT",
   "author": {
@@ -16,10 +15,23 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./hono": {
+      "types": "./dist/hono.d.ts",
+      "import": "./dist/hono.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "schema/d1.sql"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -31,14 +43,17 @@
   },
   "dependencies": {
     "@better-auth/passkey": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "better-auth": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "catalog:",
     "@types/node": "catalog:",
     "hono": "catalog:",
     "miniflare": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "hono": "^4.13.9"
   },
   "engines": {
     "node": ">=22.22.3"
@@ -54,6 +69,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": false
+    "provenance": true
   }
 }

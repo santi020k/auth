@@ -9,9 +9,9 @@ test("presents the complete authentication boundary", async ({ page }) => {
     "Share authentication policy. Never share identity state.",
   );
   await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
-  await expect(page.getByText("Private preview", { exact: true })).toBeVisible();
-  await expect(page.getByText("v0.1.0", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("npm publication is gated.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Experimental public release", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^v0\.\d+\.\d+$/, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Available on npm as experimental 0.x.", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "npm package page" })).toHaveAttribute(
     "href",
     "https://www.npmjs.com/package/@santi020k/auth-cloudflare",

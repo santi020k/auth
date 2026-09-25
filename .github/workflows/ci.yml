@@ -51,6 +51,8 @@ jobs:
         with:
           name: playwright-failures
           path: |
+            apps/playground/playwright-report
+            apps/playground/test-results
             apps/website/playwright-report
             apps/website/test-results
           if-no-files-found: ignore

@@ -12,13 +12,13 @@ const repositoryURL = "https://github.com/santi020k/auth";
 
 const installCommands = [
   {
-    code: "pnpm add @santi020k/auth-cloudflare better-auth @better-auth/passkey",
+    code: "pnpm add @santi020k/auth-cloudflare hono",
     label: "pnpm",
     language: "shell",
     value: "pnpm",
   },
   {
-    code: "npm install @santi020k/auth-cloudflare better-auth @better-auth/passkey",
+    code: "npm install @santi020k/auth-cloudflare hono",
     label: "npm",
     language: "shell",
     value: "npm",
@@ -27,32 +27,50 @@ const installCommands = [
 
 const integrationExamples = [
   {
-    code: `const ownerAuth = createOwnerAuth({
-  appName: "Example owner workspace",
-  baseURL: env.AUTH_BASE_URL,
-  cookiePrefix: "example-owner",
-  database: env.AUTH_DB,
-  ownerEmail: env.OWNER_EMAIL,
-  secret: env.AUTH_SECRET,
-  sendVerificationOTP: ({ email, otp }) =>
-    sendLoginCode(env, email, otp),
-});
+    code: `import { createOwnerAuth } from
+  "@santi020k/auth-cloudflare";
 
-app.all("/api/auth/*", (context) =>
-  ownerAuth.handler(context.req.raw),
-);`,
+app.all("/api/auth/*", (context) => {
+  const ownerAuth = createOwnerAuth({
+    appName: "Example owner workspace",
+    applicationOrigin: context.env.APPLICATION_ORIGIN,
+    authServerURL: context.env.AUTH_SERVER_URL,
+    cookiePrefix: "example-owner",
+    database: context.env.AUTH_DB,
+    ownerEmail: context.env.OWNER_EMAIL,
+    secret: context.env.AUTH_SECRET,
+    sendVerificationOTP: ({ email, otp }) =>
+      sendLoginCode(context.env, email, otp),
+    waitUntil: (task) => {
+      context.executionCtx.waitUntil(task);
+    },
+  });
+  return ownerAuth.handler(context.req.raw);
+});`,
     label: "Worker",
     language: "typescript",
     value: "worker",
   },
   {
-    code: `const identity = await ownerAuth.resolveSession(
-  context.req.raw.headers,
-);
+    code: `import { createOwnerAuthClient } from
+  "@santi020k/auth-cloudflare/client";
 
-if (!identity) {
-  return context.json({ code: "unauthorized" }, 401);
-}`,
+const authClient = createOwnerAuthClient({
+  authServerURL: env.PUBLIC_AUTH_SERVER_URL,
+});`,
+    label: "Browser",
+    language: "typescript",
+    value: "browser",
+  },
+  {
+    code: `import { createOwnerAuthMiddleware } from
+  "@santi020k/auth-cloudflare/hono";
+
+app.use("/account/*",
+  createOwnerAuthMiddleware((context) =>
+    createOwnerAuthForContext(context),
+  ),
+);`,
     label: "Protected route",
     language: "typescript",
     value: "protected-route",
@@ -71,7 +89,7 @@ const boundaries = [
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero-copy">
       <div class="hero-meta" aria-label="Package status">
-        <Badge variant="warning">Private preview</Badge>
+        <Badge variant="warning">Experimental public release</Badge>
         <span>v{packageVersion}</span>
         <span>Cloudflare Workers + D1</span>
       </div>
@@ -91,8 +109,8 @@ const boundaries = [
         </ButtonLink>
       </div>
       <p class="package-availability" id="package-availability">
-        <strong>npm publication is gated.</strong> The registry listing appears after two consumer migrations and real
-        origin passkey checks are complete.
+        <strong>Available on npm as experimental 0.x.</strong> Pin the version and keep the existing login and recovery
+        path while verifying a consumer on its real origin.
         <a href={npmPackageURL} target="_blank" rel="noopener noreferrer" aria-describedby="package-availability">
           npm package page
         </a>
@@ -191,9 +209,9 @@ const boundaries = [
       <p>Integration</p>
       <h2 id="integrate-title">Small API, deliberate cutover</h2>
       <p>
-        The package stays private until two real consumers validate additive migrations and browser passkeys on their
-        final origins. The commands below document the future public contract; they will resolve from npm only after the
-        first approved release.
+        The package is public for controlled evaluation. Copy the canonical D1 schema into an app-owned additive
+        migration, configure exact browser and auth server origins, then validate email delivery and passkeys before
+        cutting over.
       </p>
       <a class="section-link" href={npmPackageURL} target="_blank" rel="noopener noreferrer">
         Check npm publication status
@@ -225,7 +243,10 @@ const boundaries = [
     <div class="section-heading">
       <p>Release discipline</p>
       <h2 id="readiness-title">Production is a verified state, not a label</h2>
-      <p>The repository can prove package behavior now. Publication still waits for consumer-origin evidence.</p>
+      <p>
+        The repository can prove package behavior and publish an experimental release. Consumer-origin evidence is still
+        required before calling an integration production-ready or the package stable.
+      </p>
     </div>
     <div class="readiness-grid">
       <Card as="article" variant="muted">
@@ -235,12 +256,12 @@ const boundaries = [
           <li>Strict TypeScript, ESLint, spelling, formatting, and unused-code checks</li>
           <li>D1 integration, package-contract, security, accessibility, and responsive browser tests</li>
           <li>Quality-managed hooks, Commitprompt enforcement, PR labels, CodeQL, and dependency updates</li>
-          <li>Release-branch npm OIDC automation with immutable version tags and GitHub Releases</li>
+          <li>Release-branch npm automation, provenance, immutable version tags, and GitHub Releases</li>
         </ul>
       </Card>
       <Card as="article" variant="muted">
-        <Badge variant="warning">Required before publish</Badge>
-        <h3>Consumer evidence</h3>
+        <Badge variant="warning">Required before stable</Badge>
+        <h3>Consumer adoption evidence</h3>
         <ul>
           <li>Separate additive migrations in PostLens Planner and Observatory</li>
           <li>Email delivery and recovery rehearsal without exposing codes</li>
