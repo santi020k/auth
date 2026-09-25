@@ -48,9 +48,15 @@ provenance. Do not keep a long-lived registry token as a fallback.
 ## Subsequent OIDC releases
 
 After the trusted publisher is configured, merging an exact `release/v<semver>` pull request runs `Release package`.
-The workflow re-runs the repository gate, inspects the package tarball, publishes through npm OIDC, verifies the
-registry version, deploys and smoke-tests the website, then creates immutable `v<semver>` and package-version tags plus
-a GitHub Release from the merged `main` commit. A manual dispatch on `main` is reserved for idempotent recovery.
+The workflow re-runs the repository gate, creates one npm tarball, publishes that exact artifact through npm OIDC,
+verifies the registry version and integrity after npm security scanning, deploys and smoke-tests the website, then
+creates immutable `v<semver>` and package-version tags plus a GitHub Release from the merged `main` commit.
+
+If a release run fails after publication, rerun that original GitHub Actions run so its event revision, checkout,
+provenance, tags, and release remain tied to the same merged commit. The workflow rebuilds the pnpm-rewritten tarball,
+requires its integrity to match any existing npm version, and then resumes the remaining idempotent steps. Do not use
+a later `workflow_dispatch` revision to recover an older publication. If the workflow itself needs a code change,
+prepare a new patch release rather than attaching immutable provenance or tags to a different commit.
 
 Before declaring the release complete, verify that the tags point to the merged commit, the GitHub Release exists, npm
 serves the intended version, and the documentation site is live. Then delete the release branch and fast-forward local
