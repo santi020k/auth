@@ -1,5 +1,11 @@
 # @santi020k/auth-cloudflare
 
+## 0.2.1
+
+### Patch Changes
+
+- Publish an installable npm artifact with workspace catalog dependencies rewritten to concrete versions.
+
 ## 0.2.0
 
 ### Minor Changes
