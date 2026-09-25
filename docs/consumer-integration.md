@@ -14,7 +14,8 @@ pnpm add @santi020k/auth-cloudflare hono
    implicitly or point two applications at the same authentication tables.
 2. Apply the migration through the application's normal development, staging, and production process.
 3. Run `checkOwnerAuthSchema(database)` from `@santi020k/auth-cloudflare/schema` in a preflight or diagnostic path. It
-   reports missing required tables, columns, and indexes while allowing application-owned additions.
+   reports missing required tables, columns, primary and unique key constraints, and indexes while allowing
+   application-owned additions.
 4. Configure a unique cookie prefix, owner email, delivery provider, and secret through the application's secret
    manager. Never reuse secrets, cookies, sessions, passkeys, or databases between consumers.
 

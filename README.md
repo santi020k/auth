@@ -34,7 +34,7 @@ pnpm --filter @santi020k/auth-playground run db:apply
 pnpm dev:playground
 ```
 
-Open `http://127.0.0.1:8793`. The playground stores codes in its local D1 mailbox and reveals the latest code only on
+Open `http://localhost:8793`. The playground stores codes in its local D1 mailbox and reveals the latest code only on
 localhost while `ALLOW_LOCAL_CODE` is explicitly enabled. That route returns 404 in every other configuration.
 
 Run the documentation website separately:

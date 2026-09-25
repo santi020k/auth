@@ -68,3 +68,10 @@ CREATE TABLE "rateLimit" (
   "count" INTEGER NOT NULL,
   "lastRequest" INTEGER NOT NULL
 );
+
+CREATE TABLE "playground_mailbox" (
+  "id" TEXT PRIMARY KEY NOT NULL,
+  "email" TEXT NOT NULL,
+  "otp" TEXT NOT NULL,
+  "createdAt" INTEGER NOT NULL
+);

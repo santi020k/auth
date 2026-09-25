@@ -85,6 +85,72 @@ void describe("checkOwnerAuthSchema", () => {
     }
   });
 
+  void it("reports missing primary keys", async () => {
+    const { database, miniflare } = await createDatabase();
+    try {
+      const schemaWithoutPrimaryKeys = (await canonicalSchema()).replaceAll(
+        '"id" TEXT PRIMARY KEY NOT NULL',
+        '"id" TEXT NOT NULL',
+      );
+      await applySql(database, schemaWithoutPrimaryKeys);
+
+      assert.deepEqual(await checkOwnerAuthSchema(database), {
+        findings: [
+          { columns: ["id"], kind: "missing_primary_key", table: "user" },
+          { columns: ["id"], kind: "missing_primary_key", table: "session" },
+          { columns: ["id"], kind: "missing_primary_key", table: "account" },
+          { columns: ["id"], kind: "missing_primary_key", table: "verification" },
+          { columns: ["id"], kind: "missing_primary_key", table: "passkey" },
+          { columns: ["id"], kind: "missing_primary_key", table: "rateLimit" },
+        ],
+        ok: false,
+      });
+    } finally {
+      await miniflare.dispose();
+    }
+  });
+
+  void it("reports missing required unique constraints", async () => {
+    const { database, miniflare } = await createDatabase();
+    try {
+      const schemaWithoutUniqueConstraints = (await canonicalSchema()).replaceAll(" NOT NULL UNIQUE", " NOT NULL");
+      await applySql(database, schemaWithoutUniqueConstraints);
+
+      assert.deepEqual(await checkOwnerAuthSchema(database), {
+        findings: [
+          { columns: ["email"], kind: "missing_unique_constraint", table: "user" },
+          { columns: ["token"], kind: "missing_unique_constraint", table: "session" },
+          { columns: ["credentialID"], kind: "missing_unique_constraint", table: "passkey" },
+          { columns: ["key"], kind: "missing_unique_constraint", table: "rateLimit" },
+        ],
+        ok: false,
+      });
+    } finally {
+      await miniflare.dispose();
+    }
+  });
+
+  void it("does not accept a partial unique index as a required unique constraint", async () => {
+    const { database, miniflare } = await createDatabase();
+    try {
+      const schemaWithPartialEmailUniqueness = (await canonicalSchema()).replace(
+        '  "email" TEXT NOT NULL UNIQUE,',
+        '  "email" TEXT NOT NULL,',
+      );
+      await applySql(
+        database,
+        `${schemaWithPartialEmailUniqueness}\nCREATE UNIQUE INDEX "partial_user_email_unique" ON "user" ("email") WHERE "emailVerified" = 1;`,
+      );
+
+      assert.deepEqual(await checkOwnerAuthSchema(database), {
+        findings: [{ columns: ["email"], kind: "missing_unique_constraint", table: "user" }],
+        ok: false,
+      });
+    } finally {
+      await miniflare.dispose();
+    }
+  });
+
   void it("allows consumer-owned tables, columns, and indexes", async () => {
     const { database, miniflare } = await createDatabase();
     try {

@@ -4,6 +4,8 @@ interface RequiredTable {
   columns: readonly string[];
   indexes: readonly RequiredIndex[];
   name: string;
+  primaryKey: readonly string[];
+  uniqueConstraints: readonly (readonly string[])[];
 }
 
 interface RequiredIndex {
@@ -18,6 +20,7 @@ interface SchemaObjectRow {
 
 interface TableInfoRow {
   name: string;
+  pk: number;
 }
 
 interface IndexInfoRow {
@@ -25,10 +28,18 @@ interface IndexInfoRow {
   seqno: number;
 }
 
+interface IndexListRow {
+  name: string;
+  partial: number;
+  unique: number;
+}
+
 export type OwnerAuthSchemaFinding =
   | { kind: "missing_table"; table: string }
   | { column: string; kind: "missing_column"; table: string }
-  | { columns: readonly string[]; index: string; kind: "missing_index"; table: string };
+  | { columns: readonly string[]; index: string; kind: "missing_index"; table: string }
+  | { columns: readonly string[]; kind: "missing_primary_key"; table: string }
+  | { columns: readonly string[]; kind: "missing_unique_constraint"; table: string };
 
 export interface OwnerAuthSchemaCheck {
   findings: OwnerAuthSchemaFinding[];
@@ -40,11 +51,15 @@ const REQUIRED_TABLES: readonly RequiredTable[] = [
     columns: ["id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt"],
     indexes: [],
     name: "user",
+    primaryKey: ["id"],
+    uniqueConstraints: [["email"]],
   },
   {
     columns: ["id", "userId", "token", "expiresAt", "ipAddress", "userAgent", "createdAt", "updatedAt"],
     indexes: [{ columns: ["userId"], name: "session_userId_idx" }],
     name: "session",
+    primaryKey: ["id"],
+    uniqueConstraints: [["token"]],
   },
   {
     columns: [
@@ -64,11 +79,15 @@ const REQUIRED_TABLES: readonly RequiredTable[] = [
     ],
     indexes: [{ columns: ["userId"], name: "account_userId_idx" }],
     name: "account",
+    primaryKey: ["id"],
+    uniqueConstraints: [],
   },
   {
     columns: ["id", "identifier", "value", "expiresAt", "createdAt", "updatedAt"],
     indexes: [{ columns: ["identifier"], name: "verification_identifier_idx" }],
     name: "verification",
+    primaryKey: ["id"],
+    uniqueConstraints: [],
   },
   {
     columns: [
@@ -86,11 +105,15 @@ const REQUIRED_TABLES: readonly RequiredTable[] = [
     ],
     indexes: [{ columns: ["userId"], name: "passkey_userId_idx" }],
     name: "passkey",
+    primaryKey: ["id"],
+    uniqueConstraints: [["credentialID"]],
   },
   {
     columns: ["id", "key", "count", "lastRequest"],
     indexes: [],
     name: "rateLimit",
+    primaryKey: ["id"],
+    uniqueConstraints: [["key"]],
   },
 ];
 
@@ -100,6 +123,40 @@ function quotedIdentifier(identifier: string): string {
 
 function sameColumns(actual: readonly string[], expected: readonly string[]): boolean {
   return actual.length === expected.length && actual.every((column, index) => column === expected[index]);
+}
+
+async function checkKeyConstraints(
+  database: D1Database,
+  table: RequiredTable,
+  tableInfo: readonly TableInfoRow[],
+): Promise<OwnerAuthSchemaFinding[]> {
+  const findings: OwnerAuthSchemaFinding[] = [];
+  const primaryKey = tableInfo
+    .filter((column) => column.pk > 0)
+    .toSorted((left, right) => left.pk - right.pk)
+    .map((column) => column.name);
+  if (!sameColumns(primaryKey, table.primaryKey)) {
+    findings.push({ columns: table.primaryKey, kind: "missing_primary_key", table: table.name });
+  }
+
+  const indexList = await database.prepare(`PRAGMA index_list(${quotedIdentifier(table.name)})`).all<IndexListRow>();
+  const uniqueIndexes = await Promise.all(
+    indexList.results
+      .filter((index) => index.unique === 1 && index.partial === 0)
+      .map(async (index) => {
+        const indexInfo = await database
+          .prepare(`PRAGMA index_info(${quotedIdentifier(index.name)})`)
+          .all<IndexInfoRow>();
+        return indexInfo.results.toSorted((left, right) => left.seqno - right.seqno).map((row) => row.name);
+      }),
+  );
+  for (const uniqueConstraint of table.uniqueConstraints) {
+    if (!uniqueIndexes.some((columns) => sameColumns(columns, uniqueConstraint))) {
+      findings.push({ columns: uniqueConstraint, kind: "missing_unique_constraint", table: table.name });
+    }
+  }
+
+  return findings;
 }
 
 export async function checkOwnerAuthSchema(database: D1Database): Promise<OwnerAuthSchemaCheck> {
@@ -129,6 +186,8 @@ export async function checkOwnerAuthSchema(database: D1Database): Promise<OwnerA
     for (const column of table.columns) {
       if (!columnNames.has(column)) findings.push({ column, kind: "missing_column", table: table.name });
     }
+
+    findings.push(...(await checkKeyConstraints(database, table, tableInfo.results)));
 
     for (const index of table.indexes) {
       let matches = indexes.get(index.name) === table.name;

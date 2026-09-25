@@ -119,8 +119,9 @@ Cloudflare Workers must enable `nodejs_compat` (or the narrower `nodejs_als` fla
 needed). Copy `schema/d1.sql` into the consumer's migration directory, review it there, and apply it through that
 application's deployment process. This package never silently creates or mutates production tables.
 
-Use `checkOwnerAuthSchema` from `@santi020k/auth-cloudflare/schema` to report missing required tables, columns, and
-indexes before serving authentication traffic. Application-owned extra schema is allowed.
+Use `checkOwnerAuthSchema` from `@santi020k/auth-cloudflare/schema` to report missing required tables, columns, primary
+and unique key constraints, and indexes before serving authentication traffic. Application-owned extra schema is
+allowed.
 
 See the complete [consumer integration checklist](https://github.com/santi020k/auth/blob/main/docs/consumer-integration.md)
 and [security policy](https://github.com/santi020k/auth/blob/main/SECURITY.md).
