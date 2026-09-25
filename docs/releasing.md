@@ -57,7 +57,9 @@ original merged `main` commit that produced the published tarball. The workflow 
 outside `main`, verifies the existing registry artifact byte-for-byte, and creates tags from the original commit
 rather than from a later workflow-only fix. Manual recovery never publishes an absent version because npm provenance
 would identify the dispatch revision; rerun the original release-merge workflow for a publication that did not occur,
-or wait for npm security scanning to expose a version that the registry already accepted.
+or wait for npm security scanning to expose a version that the registry already accepted. Recovery also skips the
+deployment step so an old release cannot roll back the production documentation; dispatch `Deploy website` separately
+to verify and deploy the current `main` revision, while release recovery still smoke-tests the live site.
 
 Before declaring the release complete, verify that the tags point to the merged commit, the GitHub Release exists, npm
 serves the intended version, and the documentation site is live. Then delete the release branch and fast-forward local
