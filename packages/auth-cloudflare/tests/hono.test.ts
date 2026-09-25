@@ -3,8 +3,20 @@ import { describe, it } from "node:test";
 
 import { Hono } from "hono";
 
-import { createOwnerAuthMiddleware, OWNER_AUTH_SESSION_VARIABLE, type OwnerAuthEnv } from "../src/hono.js";
-import type { OwnerAuthInstance, OwnerAuthSessionIdentity } from "../src/index.js";
+import {
+  AUTH_SESSION_VARIABLE,
+  type AuthEnv,
+  createAuthMiddleware,
+  createOwnerAuthMiddleware,
+  OWNER_AUTH_SESSION_VARIABLE,
+  type OwnerAuthEnv,
+} from "../src/hono.js";
+import type {
+  AuthSessionIdentity,
+  MultiUserAuthInstance,
+  OwnerAuthInstance,
+  OwnerAuthSessionIdentity,
+} from "../src/index.js";
 
 const identity: OwnerAuthSessionIdentity = {
   email: "owner@example.com",
@@ -27,6 +39,57 @@ function ownerAuth(resolveSession: OwnerAuthInstance["resolveSession"]): OwnerAu
     resolveSession,
   };
 }
+
+function multiUserAuth(resolveSession: MultiUserAuthInstance["resolveSession"]): MultiUserAuthInstance {
+  return {
+    handler: () => Promise.resolve(new Response()),
+    policy: {
+      applicationOrigin: "https://example.com",
+      authServerOrigin: "https://api.example.com",
+      basePath: "/api/auth",
+      cookiePrefix: "example-members",
+      emailOtpRateLimit: { max: 3, window: 600 },
+      relyingPartyId: "example.com",
+      secureCookies: true,
+    },
+    resolveSession,
+  };
+}
+
+void describe("multi-user auth Hono middleware", () => {
+  void it("exposes an approved identity through the generic session variable", async () => {
+    const memberIdentity: AuthSessionIdentity = {
+      email: "member@example.com",
+      userId: "member-user-id",
+    };
+    const app = new Hono<AuthEnv>();
+    app.get("/private", createAuthMiddleware(multiUserAuth(() => Promise.resolve(memberIdentity))), (context) => {
+      const session = context.get(AUTH_SESSION_VARIABLE);
+      assert.strictEqual(session, memberIdentity);
+      return context.json(session);
+    });
+
+    const response = await app.request("https://app.example.com/private");
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), memberIdentity);
+  });
+
+  void it("returns a generic non-cacheable 401 for a rejected session", async () => {
+    const app = new Hono<AuthEnv>();
+    const middleware = createAuthMiddleware(multiUserAuth(() => Promise.resolve(null)));
+    app.get("/private", middleware, (context) => context.text("private"));
+
+    const response = await app.request("https://app.example.com/private");
+
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.deepEqual(await response.json(), {
+      code: "auth_session_required",
+      message: "auth_session_required",
+    });
+  });
+});
 
 void describe("owner auth Hono middleware", () => {
   void it("resolves the session once and exposes the exact identity downstream", async () => {

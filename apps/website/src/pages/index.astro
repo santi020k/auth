@@ -5,7 +5,7 @@ import packageManifest from "../../../../packages/auth-cloudflare/package.json";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
 const description =
-  "Owner-only email-code and passkey authentication policy for Hono applications running on Cloudflare Workers and D1.";
+  "Single-owner and multi-user email-code and passkey authentication for Hono applications on Cloudflare Workers and D1.";
 const npmPackageURL = "https://www.npmjs.com/package/@santi020k/auth-cloudflare";
 const packageVersion = packageManifest.version;
 const repositoryURL = "https://github.com/santi020k/auth";
@@ -78,7 +78,7 @@ app.use("/account/*",
 ] as const;
 
 const boundaries = [
-  ["Identity", "One exact owner email per application"],
+  ["Identity", "One owner or an application-owned member policy"],
   ["Persistence", "A dedicated D1 database and app-owned migrations"],
   ["Browser", "Exact origin, cookie prefix, and WebAuthn relying-party ID"],
   ["Recovery", "A consumer-owned recovery policy and delivery provider"],
@@ -98,7 +98,8 @@ const boundaries = [
       </h1>
       <p class="hero-summary">
         A focused email-code and passkey foundation for Santiago-owned Cloudflare applications. Better Auth handles the
-        protocol; each product keeps its own users, sessions, secrets, cookies, and recovery path.
+        protocol; each product decides who may sign in and keeps its own users, sessions, secrets, cookies, and recovery
+        path.
       </p>
       <div class="hero-actions">
         <ButtonLink href="#integrate" showArrow>
@@ -106,6 +107,9 @@ const boundaries = [
         </ButtonLink>
         <ButtonLink href={repositoryURL} newTab variant="secondary" showArrow>
           View the source
+        </ButtonLink>
+        <ButtonLink href="/multi-user" variant="secondary" showArrow>
+          Add multiple accounts
         </ButtonLink>
       </div>
       <p class="package-availability" id="package-availability">
@@ -138,7 +142,7 @@ const boundaries = [
         </dl>
         <div class="contract-footer">
           <span aria-hidden="true"></span>
-          No shared account system
+          No cross-application account system
         </div>
       </Card>
     </aside>
@@ -184,7 +188,7 @@ const boundaries = [
       <Card as="article">
         <p class="feature-index">A</p>
         <h3>Private email discovery</h3>
-        <p>Unknown addresses receive the same success-shaped response without code delivery or database persistence.</p>
+        <p>Rejected addresses receive the same success-shaped response without code delivery or user creation.</p>
       </Card>
       <Card as="article">
         <p class="feature-index">B</p>
@@ -213,6 +217,9 @@ const boundaries = [
         migration, configure exact browser and auth server origins, then validate email delivery and passkeys before
         cutting over.
       </p>
+      <a class="section-link" href="/multi-user">
+        Read the multi-user integration guide
+      </a>
       <a class="section-link" href={npmPackageURL} target="_blank" rel="noopener noreferrer">
         Check npm publication status
       </a>

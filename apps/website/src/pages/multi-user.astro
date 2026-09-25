@@ -1,0 +1,201 @@
+---
+import { Badge, ButtonLink, Card, CodeTabs } from "@santi020k/lumen-astro";
+
+import packageManifest from "../../../../packages/auth-cloudflare/package.json";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const description =
+  "Add multiple approved accounts to a Cloudflare application while keeping membership, roles, identity state, and recovery application-owned.";
+const packageVersion = packageManifest.version;
+
+const serverExamples = [
+  {
+    code: `import { createMultiUserAuth } from
+  "@santi020k/auth-cloudflare";
+
+app.all("/api/auth/*", (context) => {
+  const auth = createMultiUserAuth({
+    appName: "Example team workspace",
+    applicationOrigin: context.env.APPLICATION_ORIGIN,
+    authServerURL: context.env.AUTH_SERVER_URL,
+    cookiePrefix: "example-team",
+    database: context.env.AUTH_DB,
+    secret: context.env.AUTH_SECRET,
+    authorizeEmail: (email) =>
+      isActiveMember(context.env.AUTH_DB, email),
+    sendVerificationOTP: ({ email, otp }) =>
+      sendLoginCode(context.env, email, otp),
+    waitUntil: (task) => {
+      context.executionCtx.waitUntil(task);
+    },
+  });
+
+  return auth.handler(context.req.raw);
+});`,
+    label: "Worker",
+    language: "typescript",
+    value: "worker",
+  },
+  {
+    code: `import { createApplicationAuthClient } from
+  "@santi020k/auth-cloudflare/client";
+
+export const authClient = createApplicationAuthClient({
+  authServerURL: env.PUBLIC_AUTH_SERVER_URL,
+});`,
+    label: "Browser",
+    language: "typescript",
+    value: "browser",
+  },
+  {
+    code: `import {
+  createAuthMiddleware,
+  type AuthEnv,
+} from "@santi020k/auth-cloudflare/hono";
+
+interface AppEnv extends AuthEnv {
+  Bindings: Bindings;
+}
+
+app.use("/account/*",
+  createAuthMiddleware<AppEnv>((context) =>
+    createAuthForContext(context),
+  ),
+);
+
+app.get("/account/profile", (context) =>
+  context.json(context.var.authSession),
+);`,
+    label: "Protected route",
+    language: "typescript",
+    value: "protected-route",
+  },
+] as const;
+
+const decisions = [
+  ["Membership", "Your application decides which normalized email addresses are currently approved."],
+  ["Roles", "Keep roles and permissions in your domain tables; the auth package returns identity only."],
+  ["Revocation", "Session creation, resolution, and authenticated passkey operations recheck current membership."],
+  ["Isolation", "Every application still owns a separate D1 database, secret, cookies, passkeys, and recovery policy."],
+] as const;
+---
+
+<BaseLayout description={description} title="Multi-user authentication">
+  <section class="docs-hero" aria-labelledby="multi-user-title">
+    <div>
+      <div class="hero-meta" aria-label="Guide status">
+        <Badge variant="success">Available in v{packageVersion}</Badge>
+        <span>Application-owned membership</span>
+      </div>
+      <h1 id="multi-user-title">More accounts. The same hard boundary.</h1>
+      <p>
+        Use <code>createMultiUserAuth</code> when an application needs more than one approved identity. You provide one
+        authorization callback; the package keeps the email-code, passkey, origin, rate-limit, and session policy
+        consistent.
+      </p>
+      <div class="hero-actions">
+        <ButtonLink href="#configure" showArrow>
+          Configure multi-user auth
+        </ButtonLink>
+        <ButtonLink href="/" variant="secondary">
+          Return to overview
+        </ButtonLink>
+      </div>
+    </div>
+  </section>
+
+  <article class="docs-content">
+    <section class="section" aria-labelledby="ownership-title">
+      <div class="section-heading">
+        <p>Responsibility boundary</p>
+        <h2 id="ownership-title">Authentication identifies. Your product authorizes.</h2>
+        <p>
+          The callback answers only whether an email may authenticate now. Invitations, teams, roles, billing access,
+          and domain permissions stay in application-owned data and route logic.
+        </p>
+      </div>
+      <div class="decision-grid">
+        {decisions.map(([title, detail]) => (
+          <Card as="section" variant="muted">
+            <h3>{title}</h3>
+            <p>{detail}</p>
+          </Card>
+        ))}
+      </div>
+    </section>
+
+    <section class="section code-section docs-code-section" id="configure" aria-labelledby="configure-title">
+      <div class="section-heading">
+        <p>Configuration</p>
+        <h2 id="configure-title">Supply a live membership check</h2>
+        <p>
+          The package normalizes the email before calling <code>authorizeEmail</code>. Check an indexed, authoritative
+          membership source and return only active membership—not a cached role decision.
+        </p>
+      </div>
+      <CodeTabs
+        ariaLabel="Multi-user authentication integration examples"
+        items={serverExamples}
+        storageKey="multi-user-auth-example"
+        theme="lumen"
+      />
+    </section>
+
+    <section class="section docs-prose" aria-labelledby="lifecycle-title">
+      <div class="section-heading">
+        <p>Lifecycle</p>
+        <h2 id="lifecycle-title">Check membership at every meaningful boundary</h2>
+      </div>
+      <ol class="lifecycle-list">
+        <li>
+          <strong>Request a code.</strong>
+          <span>
+            Approved and rejected addresses receive the same success-shaped response. Only approved addresses receive
+            mail. Better Auth may persist a hashed, expiring verification record as part of that uniform flow.
+          </span>
+        </li>
+        <li>
+          <strong>Create or update identity.</strong>
+          <span>The database hook blocks user writes when the callback no longer approves the normalized email.</span>
+        </li>
+        <li>
+          <strong>Create or resolve a session.</strong>
+          <span>
+            The callback runs again and authenticated passkey operations are guarded. A removed member cannot create a
+            new session, mutate passkeys, or receive a resolved identity even if an unexpired session record remains
+            stored.
+          </span>
+        </li>
+        <li>
+          <strong>Apply product permissions.</strong>
+          <span>Use the returned email and user ID to load current roles from application-owned domain data.</span>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section docs-prose" aria-labelledby="migration-title">
+      <div class="section-heading">
+        <p>Migration</p>
+        <h2 id="migration-title">No authentication schema migration is required</h2>
+        <p>
+          The canonical user and session tables already support multiple identities. Add a consumer-owned membership
+          table only if your product does not have an authoritative member source, and introduce it through that
+          application's normal additive migration process.
+        </p>
+      </div>
+      <Card class="migration-card">
+        <h3>
+          Moving from <code>createOwnerAuth</code>
+        </h3>
+        <ol>
+          <li>Keep the same database, secret, cookie prefix, origins, delivery callback, and schema.</li>
+          <li>Add the current owner to the authoritative membership source before changing the factory.</li>
+          <li>Replace the owner factory, browser client, and Hono middleware with the generic names shown above.</li>
+          <li>
+            Verify owner access, a second approved account, a rejected account, and immediate membership revocation.
+          </li>
+        </ol>
+      </Card>
+    </section>
+  </article>
+</BaseLayout>

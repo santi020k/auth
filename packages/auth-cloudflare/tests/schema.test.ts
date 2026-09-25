@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { Miniflare } from "miniflare";
 
-import { checkOwnerAuthSchema } from "../src/schema.js";
+import { checkAuthSchema, checkOwnerAuthSchema } from "../src/schema.js";
 
 const canonicalSchemaPath = fileURLToPath(new URL("../../schema/d1.sql", import.meta.url));
 let databaseSequence = 0;
@@ -55,6 +55,7 @@ void describe("checkOwnerAuthSchema", () => {
     try {
       await applySql(database, await canonicalSchema());
       assert.deepEqual(await checkOwnerAuthSchema(database), { findings: [], ok: true });
+      assert.deepEqual(await checkAuthSchema(database), { findings: [], ok: true });
     } finally {
       await miniflare.dispose();
     }

@@ -46,6 +46,9 @@ export interface OwnerAuthSchemaCheck {
   ok: boolean;
 }
 
+export type AuthSchemaFinding = OwnerAuthSchemaFinding;
+export type AuthSchemaCheck = OwnerAuthSchemaCheck;
+
 const REQUIRED_TABLES: readonly RequiredTable[] = [
   {
     columns: ["id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt"],
@@ -205,4 +208,8 @@ export async function checkOwnerAuthSchema(database: D1Database): Promise<OwnerA
   }
 
   return { findings, ok: findings.length === 0 };
+}
+
+export function checkAuthSchema(database: D1Database): Promise<AuthSchemaCheck> {
+  return checkOwnerAuthSchema(database);
 }

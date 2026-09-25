@@ -1,6 +1,6 @@
 import { passkey } from "@better-auth/passkey";
 import type { D1Database } from "@cloudflare/workers-types";
-import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { APIError, betterAuth, type BetterAuthOptions } from "better-auth";
 import { emailOTP } from "better-auth/plugins";
 
 const DEFAULT_SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
@@ -10,17 +10,21 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CORS_METHODS = new Set(["GET", "HEAD", "POST"]);
 const CORS_HEADERS = new Set(["content-type"]);
 
-export interface OwnerAuthEmail {
+export interface AuthEmail {
   email: string;
   otp: string;
 }
 
-export interface OwnerAuthEmailOtpRateLimit {
+export interface AuthEmailOtpRateLimit {
   max: number;
   window: number;
 }
 
-export type OwnerAuthVersionedSecret = NonNullable<BetterAuthOptions["secrets"]>[number];
+export type AuthVersionedSecret = NonNullable<BetterAuthOptions["secrets"]>[number];
+
+export type OwnerAuthEmail = AuthEmail;
+export type OwnerAuthEmailOtpRateLimit = AuthEmailOtpRateLimit;
+export type OwnerAuthVersionedSecret = AuthVersionedSecret;
 
 interface OwnerAuthSimpleSecretOptions {
   legacySecret?: never;
@@ -28,55 +32,73 @@ interface OwnerAuthSimpleSecretOptions {
   secrets?: never;
 }
 
-interface OwnerAuthVersionedSecretOptions {
+interface AuthVersionedSecretOptions {
   legacySecret?: string;
   secret?: never;
-  secrets: OwnerAuthVersionedSecret[];
+  secrets: AuthVersionedSecret[];
 }
 
-type OwnerAuthSecretOptions = OwnerAuthSimpleSecretOptions | OwnerAuthVersionedSecretOptions;
+type AuthSecretOptions = OwnerAuthSimpleSecretOptions | AuthVersionedSecretOptions;
 
-interface OwnerAuthPolicyConfiguration {
+interface AuthPolicyConfiguration {
   appName: string;
   applicationOrigin: string;
   authServerURL: string;
   basePath?: `/${string}`;
   cookiePrefix: string;
-  emailOtpRateLimit?: OwnerAuthEmailOtpRateLimit;
-  ownerEmail: string;
+  emailOtpRateLimit?: AuthEmailOtpRateLimit;
 }
 
-export type OwnerAuthPolicyOptions = OwnerAuthPolicyConfiguration & OwnerAuthSecretOptions;
-
-export type OwnerAuthOptions = OwnerAuthPolicyOptions & {
+interface AuthRuntimeConfiguration {
   database: D1Database;
-  sendVerificationOTP(email: OwnerAuthEmail): Promise<void>;
+  sendVerificationOTP(email: AuthEmail): Promise<void>;
   sessionExpiresIn?: number;
   sessionUpdateAge?: number;
   waitUntil(task: Promise<void>): void;
-};
+}
 
-export interface OwnerAuthPolicy {
+export type MultiUserAuthPolicyOptions = AuthPolicyConfiguration & AuthSecretOptions;
+
+export type MultiUserAuthOptions = MultiUserAuthPolicyOptions &
+  AuthRuntimeConfiguration & {
+    authorizeEmail(email: string): boolean | Promise<boolean>;
+  };
+
+export type OwnerAuthPolicyOptions = AuthPolicyConfiguration &
+  AuthSecretOptions & {
+    ownerEmail: string;
+  };
+
+export type OwnerAuthOptions = OwnerAuthPolicyOptions & AuthRuntimeConfiguration;
+
+export interface AuthPolicy {
   applicationOrigin: string;
   authServerOrigin: string;
   basePath: string;
   cookiePrefix: string;
-  emailOtpRateLimit: OwnerAuthEmailOtpRateLimit;
-  ownerEmail: string;
+  emailOtpRateLimit: AuthEmailOtpRateLimit;
   relyingPartyId: string;
   secureCookies: boolean;
 }
 
-export interface OwnerAuthSessionIdentity {
+export interface OwnerAuthPolicy extends AuthPolicy {
+  ownerEmail: string;
+}
+
+export interface AuthSessionIdentity {
   email: string;
   userId: string;
 }
 
-export interface OwnerAuthInstance {
+interface AuthInstance<TPolicy extends AuthPolicy> {
   handler(request: Request): Promise<Response>;
-  policy: OwnerAuthPolicy;
-  resolveSession(headers: Headers): Promise<OwnerAuthSessionIdentity | null>;
+  policy: TPolicy;
+  resolveSession(headers: Headers): Promise<AuthSessionIdentity | null>;
 }
+
+export type MultiUserAuthInstance = AuthInstance<AuthPolicy>;
+export type OwnerAuthInstance = AuthInstance<OwnerAuthPolicy>;
+export type OwnerAuthSessionIdentity = AuthSessionIdentity;
 
 function errorResponse(status: 401 | 403, code: string): Response {
   return Response.json(
@@ -124,10 +146,14 @@ function normalizeCookiePrefix(value: string): string {
   return cookiePrefix;
 }
 
-export function normalizeOwnerEmail(value: string): string {
+export function normalizeAuthEmail(value: string): string {
   const email = value.trim().toLowerCase();
   if (!EMAIL_PATTERN.test(email)) throw new Error("owner_auth_email_invalid");
   return email;
+}
+
+export function normalizeOwnerEmail(value: string): string {
+  return normalizeAuthEmail(value);
 }
 
 function positiveInteger(value: number | undefined, fallback: number, code: string): number {
@@ -136,7 +162,7 @@ function positiveInteger(value: number | undefined, fallback: number, code: stri
   return result;
 }
 
-function resolveEmailOtpRateLimit(value: OwnerAuthEmailOtpRateLimit | undefined): OwnerAuthEmailOtpRateLimit {
+function resolveEmailOtpRateLimit(value: AuthEmailOtpRateLimit | undefined): AuthEmailOtpRateLimit {
   return {
     max: positiveInteger(value?.max, 3, "owner_auth_email_otp_rate_limit_invalid"),
     window: positiveInteger(value?.window, 10 * 60, "owner_auth_email_otp_rate_limit_invalid"),
@@ -194,7 +220,7 @@ function validateSecrets(options: {
   if (options.legacySecret !== undefined) validateSecret(options.legacySecret);
 }
 
-export function resolveOwnerAuthPolicy(options: OwnerAuthPolicyOptions): OwnerAuthPolicy {
+function resolveAuthPolicy(options: MultiUserAuthPolicyOptions): AuthPolicy {
   if (!options.appName.trim()) throw new Error("owner_auth_app_name_invalid");
   validateSecrets(options);
   const applicationOrigin = resolveOrigin(options.applicationOrigin);
@@ -207,13 +233,23 @@ export function resolveOwnerAuthPolicy(options: OwnerAuthPolicyOptions): OwnerAu
     basePath: normalizeBasePath(options.basePath),
     cookiePrefix: normalizeCookiePrefix(options.cookiePrefix),
     emailOtpRateLimit: resolveEmailOtpRateLimit(options.emailOtpRateLimit),
-    ownerEmail: normalizeOwnerEmail(options.ownerEmail),
     relyingPartyId: applicationOrigin.hostname,
     secureCookies: authServerOrigin.protocol === "https:",
   };
 }
 
-function corsHeaders(policy: OwnerAuthPolicy): Headers {
+export function resolveMultiUserAuthPolicy(options: MultiUserAuthPolicyOptions): AuthPolicy {
+  return resolveAuthPolicy(options);
+}
+
+export function resolveOwnerAuthPolicy(options: OwnerAuthPolicyOptions): OwnerAuthPolicy {
+  return {
+    ...resolveAuthPolicy(options),
+    ownerEmail: normalizeAuthEmail(options.ownerEmail),
+  };
+}
+
+function corsHeaders(policy: AuthPolicy): Headers {
   return new Headers({
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Origin": policy.applicationOrigin,
@@ -221,7 +257,7 @@ function corsHeaders(policy: OwnerAuthPolicy): Headers {
   });
 }
 
-function withCors(policy: OwnerAuthPolicy, request: Request, response: Response): Response {
+function withCors(policy: AuthPolicy, request: Request, response: Response): Response {
   if (request.headers.get("Origin") !== policy.applicationOrigin) return response;
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Credentials", "true");
@@ -239,7 +275,7 @@ function withCors(policy: OwnerAuthPolicy, request: Request, response: Response)
   return new Response(response.body, { headers, status: response.status, statusText: response.statusText });
 }
 
-function preflightResponse(policy: OwnerAuthPolicy, request: Request): Response {
+function preflightResponse(policy: AuthPolicy, request: Request): Response {
   const requestedMethod = request.headers.get("Access-Control-Request-Method")?.toUpperCase();
   const requestedHeaders = (request.headers.get("Access-Control-Request-Headers") ?? "")
     .split(",")
@@ -268,18 +304,13 @@ async function requestEmail(request: Request): Promise<string | null> {
     .catch(() => null);
   if (!isRecord(body) || typeof body.email !== "string") return null;
   try {
-    return normalizeOwnerEmail(body.email);
+    return normalizeAuthEmail(body.email);
   } catch {
     return "";
   }
 }
 
-function enforceRequestBoundary(
-  policy: OwnerAuthPolicy,
-  request: Request,
-  url: URL,
-  method: string,
-): Response | undefined {
+function enforceRequestBoundary(policy: AuthPolicy, request: Request, url: URL, method: string): Response | undefined {
   const origin = request.headers.get("Origin");
   if (url.origin !== policy.authServerOrigin || (origin !== null && origin !== policy.applicationOrigin)) {
     return errorResponse(403, "request_origin_not_allowed");
@@ -294,7 +325,12 @@ function enforceRequestBoundary(
   return undefined;
 }
 
-export async function enforceOwnerAuthRequest(policy: OwnerAuthPolicy, request: Request): Promise<Response | null> {
+async function enforceAuthRequest(
+  policy: AuthPolicy,
+  authorizeEmail: (email: string) => boolean | Promise<boolean>,
+  invalidCredentialsCode: string | undefined,
+  request: Request,
+): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith(`${policy.basePath}/`) && url.pathname !== policy.basePath) return null;
 
@@ -302,24 +338,60 @@ export async function enforceOwnerAuthRequest(policy: OwnerAuthPolicy, request: 
   const boundaryResponse = enforceRequestBoundary(policy, request, url, method);
   if (boundaryResponse) return boundaryResponse;
 
-  if (method !== "POST") return null;
+  if (method !== "POST" || invalidCredentialsCode === undefined) return null;
   if (url.pathname === `${policy.basePath}/email-otp/send-verification-otp`) {
     return null;
   }
   const email = await requestEmail(request);
-  if (email === null || email === policy.ownerEmail) return null;
-  return errorResponse(401, "invalid_owner_credentials");
+  if (email === null || (email !== "" && (await authorizeEmail(email)))) return null;
+  return errorResponse(401, invalidCredentialsCode);
 }
 
-function isEmailOtpSendRequest(policy: OwnerAuthPolicy, request: Request): boolean {
+export function enforceOwnerAuthRequest(policy: OwnerAuthPolicy, request: Request): Promise<Response | null> {
+  return enforceAuthRequest(policy, (email) => email === policy.ownerEmail, "invalid_owner_credentials", request);
+}
+
+function isEmailOtpSendRequest(policy: AuthPolicy, request: Request): boolean {
   const url = new URL(request.url);
   return (
     request.method.toUpperCase() === "POST" && url.pathname === `${policy.basePath}/email-otp/send-verification-otp`
   );
 }
 
-export function createOwnerAuth(options: OwnerAuthOptions): OwnerAuthInstance {
-  const policy = resolveOwnerAuthPolicy(options);
+function isSessionCleanupRequest(policy: AuthPolicy, request: Request): boolean {
+  const path = new URL(request.url).pathname;
+  return path === `${policy.basePath}/sign-out`;
+}
+
+async function authorizeUserId(
+  database: D1Database,
+  userId: string,
+  authorizeEmail: (email: string) => boolean | Promise<boolean>,
+): Promise<boolean> {
+  const user = await database.prepare("SELECT email FROM user WHERE id = ?").bind(userId).first<{ email: string }>();
+  return user !== null && authorizeEmail(normalizeAuthEmail(user.email));
+}
+
+async function authorizePasskeyCredential(
+  database: D1Database,
+  credentialId: string,
+  authorizeEmail: (email: string) => boolean | Promise<boolean>,
+): Promise<boolean> {
+  const user = await database
+    .prepare(
+      "SELECT user.email FROM passkey INNER JOIN user ON user.id = passkey.userId WHERE passkey.credentialID = ?",
+    )
+    .bind(credentialId)
+    .first<{ email: string }>();
+  return user !== null && authorizeEmail(normalizeAuthEmail(user.email));
+}
+
+function createConfiguredAuth<TPolicy extends AuthPolicy>(
+  options: MultiUserAuthPolicyOptions & AuthRuntimeConfiguration,
+  policy: TPolicy,
+  authorizeEmail: (email: string) => boolean | Promise<boolean>,
+  invalidCredentialsCode?: string,
+): AuthInstance<TPolicy> {
   const sessionExpiresIn = positiveInteger(
     options.sessionExpiresIn,
     DEFAULT_SESSION_LIFETIME_SECONDS,
@@ -342,13 +414,21 @@ export function createOwnerAuth(options: OwnerAuthOptions): OwnerAuthInstance {
     baseURL: policy.authServerOrigin,
     database: options.database,
     databaseHooks: {
+      session: {
+        create: {
+          before: async (session) => {
+            if (!(await authorizeUserId(options.database, session.userId, authorizeEmail))) {
+              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode ?? "invalid_credentials" });
+            }
+          },
+        },
+      },
       user: {
         create: {
-          before: (user) => Promise.resolve(normalizeOwnerEmail(user.email) === policy.ownerEmail),
+          before: async (user) => authorizeEmail(normalizeAuthEmail(user.email)),
         },
         update: {
-          before: (user) =>
-            Promise.resolve(typeof user.email !== "string" || normalizeOwnerEmail(user.email) === policy.ownerEmail),
+          before: async (user) => typeof user.email !== "string" || authorizeEmail(normalizeAuthEmail(user.email)),
         },
       },
     },
@@ -361,10 +441,11 @@ export function createOwnerAuth(options: OwnerAuthOptions): OwnerAuthInstance {
         otpLength: 6,
         rateLimit: policy.emailOtpRateLimit,
         sendVerificationOTP: ({ email, otp, type }) => {
-          const shouldDeliver = type === "sign-in" && normalizeOwnerEmail(email) === policy.ownerEmail;
-          const deliver = shouldDeliver
-            ? () => options.sendVerificationOTP({ email: policy.ownerEmail, otp })
-            : () => Promise.resolve();
+          const deliver = async (): Promise<void> => {
+            const normalizedEmail = normalizeAuthEmail(email);
+            if (type !== "sign-in" || !(await authorizeEmail(normalizedEmail))) return;
+            await options.sendVerificationOTP({ email: normalizedEmail, otp });
+          };
           const deliveryTask = deferLifecycleTask(deliver);
           options.waitUntil(deliveryTask);
           return Promise.resolve();
@@ -373,6 +454,13 @@ export function createOwnerAuth(options: OwnerAuthOptions): OwnerAuthInstance {
       }),
       passkey({
         advanced: { webAuthnChallengeCookie: `${policy.cookiePrefix}-passkey` },
+        authentication: {
+          afterVerification: async ({ clientData }) => {
+            if (!(await authorizePasskeyCredential(options.database, clientData.id, authorizeEmail))) {
+              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode ?? "invalid_credentials" });
+            }
+          },
+        },
         authenticatorSelection: { residentKey: "required", userVerification: "required" },
         origin: policy.applicationOrigin,
         rpID: policy.relyingPartyId,
@@ -397,16 +485,42 @@ export function createOwnerAuth(options: OwnerAuthOptions): OwnerAuthInstance {
 
   return {
     handler: async (request: Request): Promise<Response> => {
-      const rejection = await enforceOwnerAuthRequest(policy, request);
+      const rejection = await enforceAuthRequest(policy, authorizeEmail, invalidCredentialsCode, request);
       if (rejection) return withCors(policy, request, rejection);
+      const currentSession = await auth.api.getSession({
+        headers: request.headers,
+        query: { disableCookieCache: true, disableRefresh: true },
+      });
+      if (
+        currentSession &&
+        !(await authorizeEmail(normalizeAuthEmail(currentSession.user.email))) &&
+        !isSessionCleanupRequest(policy, request)
+      ) {
+        return withCors(policy, request, errorResponse(401, invalidCredentialsCode ?? "invalid_credentials"));
+      }
       const response = await auth.handler(request);
       return withCors(policy, request, isEmailOtpSendRequest(policy, request) ? genericEmailResponse() : response);
     },
     policy,
-    resolveSession: async (headers: Headers): Promise<OwnerAuthSessionIdentity | null> => {
-      const session = await auth.api.getSession({ headers });
-      if (!session || normalizeOwnerEmail(session.user.email) !== policy.ownerEmail) return null;
-      return { email: policy.ownerEmail, userId: session.user.id };
+    resolveSession: async (headers: Headers): Promise<AuthSessionIdentity | null> => {
+      const session = await auth.api.getSession({
+        headers,
+        query: { disableCookieCache: true, disableRefresh: true },
+      });
+      if (!session) return null;
+      const email = normalizeAuthEmail(session.user.email);
+      if (!(await authorizeEmail(email))) return null;
+      return { email, userId: session.user.id };
     },
   };
+}
+
+export function createMultiUserAuth(options: MultiUserAuthOptions): MultiUserAuthInstance {
+  const policy = resolveMultiUserAuthPolicy(options);
+  return createConfiguredAuth(options, policy, (email) => options.authorizeEmail(email));
+}
+
+export function createOwnerAuth(options: OwnerAuthOptions): OwnerAuthInstance {
+  const policy = resolveOwnerAuthPolicy(options);
+  return createConfiguredAuth(options, policy, (email) => email === policy.ownerEmail, "invalid_owner_credentials");
 }

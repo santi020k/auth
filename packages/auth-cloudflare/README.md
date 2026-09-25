@@ -1,6 +1,7 @@
 # `@santi020k/auth-cloudflare`
 
-Owner-only email-code and passkey authentication policy for Hono applications running on Cloudflare Workers and D1.
+Single-owner and multi-user email-code and passkey authentication policy for Hono applications running on Cloudflare
+Workers and D1.
 Better Auth owns the authentication protocol and persistence implementation; this package owns the shared Santiago
 policy.
 
@@ -22,10 +23,10 @@ pnpm add @santi020k/auth-cloudflare hono
 
 The package exports:
 
-- `@santi020k/auth-cloudflare`: server policy and `createOwnerAuth`;
-- `@santi020k/auth-cloudflare/client`: a credentialed Better Auth browser client with email OTP and passkeys;
-- `@santi020k/auth-cloudflare/hono`: typed session middleware for protected Hono routes;
-- `@santi020k/auth-cloudflare/schema`: D1 schema diagnostics.
+- `@santi020k/auth-cloudflare`: server policy with `createOwnerAuth` and `createMultiUserAuth`;
+- `@santi020k/auth-cloudflare/client`: credentialed owner and application browser clients with email OTP and passkeys;
+- `@santi020k/auth-cloudflare/hono`: typed owner and application session middleware for protected Hono routes;
+- `@santi020k/auth-cloudflare/schema`: owner and generic D1 schema diagnostics.
 
 The published tarball also includes `schema/d1.sql`, the canonical SQL to copy into an app-owned additive migration.
 
@@ -33,8 +34,11 @@ The published tarball also includes `schema/d1.sql`, the canonical SQL to copy i
 
 - Email OTPs are six digits, expire after ten minutes, allow five verification attempts, and are stored hashed.
 - Email OTP rate limits default to three requests per ten minutes and persist in D1 rather than isolate memory.
-- Only the configured owner email may create or update an identity.
+- Only the configured owner or an email approved by the consumer's authorization callback may create or update an
+  identity.
 - Unauthorized email-code requests receive the same success-shaped response without sending mail.
+- Multi-user session creation, session resolution, and authenticated passkey operations recheck the callback, so
+  removing membership takes effect immediately even when a stored session has not expired.
 - Requests accept only the exact configured browser origin. Unsafe requests without it are rejected, and credentialed
   CORS responses never use a wildcard origin.
 - Passkeys require discoverable credentials and user verification.
@@ -84,6 +88,36 @@ const ownerAuth = createOwnerAuth({
 Each value must contain at least 32 characters. Keep the active version first and retain previous versions only for the
 documented compatibility window.
 
+### Multiple accounts
+
+Use `createMultiUserAuth` when the application owns a set of approved accounts. The package normalizes the email before
+calling `authorizeEmail`; the callback may query an application-owned membership table or another authoritative local
+source. Keep invitations, roles, teams, and product permissions outside the auth package.
+
+```ts
+import { createMultiUserAuth } from "@santi020k/auth-cloudflare";
+
+const auth = createMultiUserAuth({
+  appName: "Example team workspace",
+  applicationOrigin: "https://workspace.example.com",
+  authServerURL: "https://auth.workspace.example.com",
+  cookiePrefix: "example-team",
+  database: context.env.DB,
+  secret: context.env.AUTH_SECRET,
+  authorizeEmail: (email) => isActiveMember(context.env.DB, email),
+  sendVerificationOTP: ({ email, otp }) => sendLoginCode(context.env, email, otp),
+  waitUntil: (task) => {
+    context.executionCtx.waitUntil(task);
+  },
+});
+```
+
+Approved and rejected code requests intentionally receive the same success-shaped response. Rejected addresses do not
+receive mail and cannot create a user, though Better Auth may persist a hashed, expiring verification record as part of
+the uniform flow. Session creation, `resolveSession`, and authenticated passkey operations recheck current membership.
+Removing a member therefore prevents a new sign-in, passkey mutation, or subsequent session resolution; deleting stored
+session records is an optional application-owned cleanup.
+
 ## Browser and protected routes
 
 ```ts
@@ -113,15 +147,37 @@ protectedRoutes.get("/account", (context) => context.json(context.var.ownerAuthS
 `createOwnerAuthForContext` is an application-owned resolver that returns a `createOwnerAuth(...)` instance using the
 current request context and bindings, as in the server example above.
 
+For multi-user applications, use `createApplicationAuthClient` and `createAuthMiddleware`. The resolved identity is
+available as `context.var.authSession` and contains only `email` and `userId`; load roles from application-owned data.
+
+```ts
+import { createApplicationAuthClient } from "@santi020k/auth-cloudflare/client";
+import { createAuthMiddleware, type AuthEnv } from "@santi020k/auth-cloudflare/hono";
+
+export const authClient = createApplicationAuthClient({
+  authServerURL: "https://auth.workspace.example.com",
+});
+
+interface AppEnv extends AuthEnv {
+  Bindings: Bindings;
+}
+
+app.use(
+  "/account/*",
+  createAuthMiddleware<AppEnv>((context) => createAuthForContext(context)),
+);
+```
+
 ## D1 ownership
 
 Cloudflare Workers must enable `nodejs_compat` (or the narrower `nodejs_als` flag when no other Node compatibility is
 needed). Copy `schema/d1.sql` into the consumer's migration directory, review it there, and apply it through that
 application's deployment process. This package never silently creates or mutates production tables.
 
-Use `checkOwnerAuthSchema` from `@santi020k/auth-cloudflare/schema` to report missing required tables, columns, primary
-and unique key constraints, and indexes before serving authentication traffic. Application-owned extra schema is
-allowed.
+Use `checkAuthSchema` (or the retained `checkOwnerAuthSchema` alias) from `@santi020k/auth-cloudflare/schema` to report
+missing required tables, columns, primary and unique key constraints, and indexes before serving authentication traffic.
+Application-owned extra schema is allowed. Moving from the owner factory to multi-user auth does not require an auth
+schema migration; the canonical tables already support multiple identities.
 
 See the complete [consumer integration checklist](https://github.com/santi020k/auth/blob/main/docs/consumer-integration.md)
 and [security policy](https://github.com/santi020k/auth/blob/main/SECURITY.md).

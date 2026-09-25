@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
-import { createOwnerAuthClient } from "../src/client.js";
+import { createApplicationAuthClient, createOwnerAuthClient } from "../src/client.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -10,6 +10,21 @@ afterEach(() => {
 });
 
 void describe("owner auth browser client", () => {
+  void it("exposes a generic client for multi-user consumers", async () => {
+    let request: Request | undefined;
+    globalThis.fetch = (input, init): Promise<Response> => {
+      request = new Request(input, init);
+      return Promise.resolve(Response.json(null));
+    };
+
+    const client = createApplicationAuthClient({ authServerURL: "https://api.example.com" });
+    await client.getSession();
+
+    assert.ok(request);
+    assert.equal(request.url, "https://api.example.com/api/auth/get-session");
+    assert.equal(request.credentials, "include");
+  });
+
   void it("sends credentialed requests to a split-origin auth server", async () => {
     let request: Request | undefined;
     globalThis.fetch = (input, init): Promise<Response> => {

@@ -1,19 +1,34 @@
-import { createOwnerAuthClient } from "../src/client.js";
+import { createApplicationAuthClient, createOwnerAuthClient } from "../src/client.js";
 import {
+  type AuthEnv,
+  type AuthResolver,
+  type AuthVariables,
+  createAuthMiddleware,
   createOwnerAuthMiddleware,
   type OwnerAuthEnv,
   type OwnerAuthResolver,
   type OwnerAuthVariables,
 } from "../src/hono.js";
-import type { OwnerAuthInstance } from "../src/index.js";
-import type { OwnerAuthSchemaFinding } from "../src/schema.js";
+import type { MultiUserAuthInstance, OwnerAuthInstance } from "../src/index.js";
+import type { AuthSchemaFinding, OwnerAuthSchemaFinding } from "../src/schema.js";
 
 export function verifyClientSurface(): void {
   const client = createOwnerAuthClient({ authServerURL: "https://api.example.com" });
+  const applicationClient = createApplicationAuthClient({ authServerURL: "https://api.example.com" });
   void client.emailOtp.sendVerificationOtp({ email: "owner@example.com", type: "sign-in" });
   void client.signIn.emailOtp({ email: "owner@example.com", otp: "123456" });
   void client.signIn.passkey();
   void client.passkey.addPasskey({ name: "Laptop" });
+  void applicationClient.getSession();
+}
+
+export function verifyMultiUserMiddlewareSurface(auth: MultiUserAuthInstance): AuthEnv {
+  void createAuthMiddleware(auth);
+  return {
+    Variables: {
+      authSession: { email: "member@example.com", userId: "member-user-id" },
+    },
+  };
 }
 
 export function verifyMiddlewareSurface(auth: OwnerAuthInstance): OwnerAuthEnv {
@@ -26,9 +41,19 @@ export function verifyMiddlewareSurface(auth: OwnerAuthInstance): OwnerAuthEnv {
 }
 
 export function verifyPublicTypes(
+  authVariables: AuthVariables,
+  authFinding: AuthSchemaFinding,
+  authResolver: AuthResolver<AuthEnv>,
   variables: OwnerAuthVariables,
   finding: OwnerAuthSchemaFinding,
   resolver: OwnerAuthResolver<OwnerAuthEnv>,
-): [OwnerAuthVariables, OwnerAuthSchemaFinding, OwnerAuthResolver<OwnerAuthEnv>] {
-  return [variables, finding, resolver];
+): [
+  AuthVariables,
+  AuthSchemaFinding,
+  AuthResolver<AuthEnv>,
+  OwnerAuthVariables,
+  OwnerAuthSchemaFinding,
+  OwnerAuthResolver<OwnerAuthEnv>,
+] {
+  return [authVariables, authFinding, authResolver, variables, finding, resolver];
 }
