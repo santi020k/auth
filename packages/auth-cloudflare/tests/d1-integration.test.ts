@@ -18,13 +18,33 @@ let app: Hono;
 let database: D1Database;
 let deliveredCode: DeliveredCode | null = null;
 let harness: AuthD1TestHarness | undefined;
+let requestIpSuffix = 1;
 
 function authRequest(path: string, body: Record<string, unknown>): Request {
+  requestIpSuffix += 1;
   return new Request(`${origin}/api/auth${path}`, {
     body: JSON.stringify(body),
-    headers: { "CF-Connecting-IP": "127.0.0.1", "Content-Type": "application/json", Origin: origin },
+    headers: {
+      "CF-Connecting-IP": `127.0.0.${requestIpSuffix}`,
+      "Content-Type": "application/json",
+      Origin: origin,
+    },
     method: "POST",
   });
+}
+
+async function drainBackgroundTasks(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 10);
+  });
+}
+
+async function waitForBackgroundEffect(effectOccurred: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (effectOccurred()) return;
+    await drainBackgroundTasks();
+  }
+  assert.fail("Timed out waiting for the background authentication effect");
 }
 
 before(async () => {
@@ -72,6 +92,7 @@ void describe("Cloudflare D1 integration", () => {
         authRequest("/email-otp/send-verification-otp", { email: ownerEmail, type: "sign-in" }),
       );
       assert.equal(send.status, 200);
+      await waitForBackgroundEffect(() => otp !== "");
       assert.match(otp, /^\d{6}$/u);
       const signIn = await prefixedAuth.handler(authRequest("/sign-in/email-otp", { email: ownerEmail, otp }));
       assert.equal(signIn.status, 200, await signIn.clone().text());
@@ -92,6 +113,7 @@ void describe("Cloudflare D1 integration", () => {
       }),
     );
     assert.equal(sendResponse.status, 200);
+    await waitForBackgroundEffect(() => deliveredCode !== null);
     assert.ok(deliveredCode);
     const code = deliveredCode.otp;
     assert.match(code, /^\d{6}$/u);
@@ -144,6 +166,67 @@ void describe("Cloudflare D1 integration", () => {
     assert.equal(row, null);
   });
 
+  void it("keeps authorized and rejected email requests indistinguishable when delivery fails", async () => {
+    const events: AuthSecurityEvent[] = [];
+    const tasks: Promise<void>[] = [];
+    const failingAuth = createOwnerAuth({
+      appName: "Failing delivery integration test",
+      baseURL: origin,
+      cookiePrefix: "integration-failing-delivery",
+      database,
+      onSecurityEvent: (event) => {
+        events.push(event);
+      },
+      ownerEmail: "delivery-owner@example.com",
+      secret: "integration-test-secret-that-is-at-least-32-characters",
+      sendVerificationOTP: () => Promise.reject(new Error("provider unavailable")),
+      waitUntil: (task) => {
+        tasks.push(task);
+      },
+    });
+
+    const approved = await failingAuth.handler(
+      authRequest("/email-otp/send-verification-otp", {
+        email: "delivery-owner@example.com",
+        type: "sign-in",
+      }),
+    );
+    const rejected = await failingAuth.handler(
+      authRequest("/email-otp/send-verification-otp", {
+        email: "rejected-delivery@example.com",
+        type: "sign-in",
+      }),
+    );
+
+    assert.equal(approved.status, 200);
+    assert.equal(rejected.status, 200);
+    assert.deepEqual(await approved.json(), { success: true });
+    assert.deepEqual(await rejected.json(), { success: true });
+    await Promise.all(tasks);
+    assert.ok(events.some((event) => event.type === "email_otp_delivery_failed"));
+    assert.ok(events.some((event) => event.type === "email_otp_delivery_suppressed"));
+  });
+
+  void it("returns exact credentialed CORS headers on split-origin responses", async () => {
+    const splitAuth = createOwnerAuth({
+      appName: "Split-origin integration test",
+      baseURL: origin,
+      browserOrigin: "http://localhost:4321",
+      cookiePrefix: "integration-split-origin",
+      database,
+      ownerEmail,
+      secret: "integration-test-secret-that-is-at-least-32-characters",
+      sendVerificationOTP: () => Promise.resolve(),
+    });
+    const request = new Request(`${origin}/api/auth/get-session`, {
+      headers: { Origin: "http://localhost:4321" },
+    });
+    const response = await splitAuth.handler(request);
+    assert.equal(response.headers.get("Access-Control-Allow-Origin"), "http://localhost:4321");
+    assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
+    assert.equal(response.headers.get("Vary"), "Origin");
+  });
+
   void it("fails closed when Turnstile is enabled and the browser omits its token", async () => {
     let delivered = false;
     const protectedAuth = createOwnerAuth({
@@ -189,6 +272,7 @@ void describe("Cloudflare D1 integration", () => {
         authRequest("/email-otp/send-verification-otp", { email, type: "sign-in" }),
       );
       assert.equal(sendResponse.status, 200);
+      await waitForBackgroundEffect(() => deliveredCodes.has(email));
       const otp = deliveredCodes.get(email);
       assert.ok(otp);
       const signInResponse = await multiUserApp.request(authRequest("/sign-in/email-otp", { email, otp }));
@@ -219,6 +303,16 @@ void describe("Cloudflare D1 integration", () => {
 
     approvedEmails.delete("first@example.com");
     assert.equal(await multiUserAuth.resolveSession(new Headers({ Cookie: firstCookie })), null);
+    const rawSessionResponse = await multiUserAuth.handler(
+      new Request(`${origin}/api/auth/get-session`, {
+        headers: { Cookie: firstCookie, Origin: origin },
+      }),
+    );
+    assert.equal(rawSessionResponse.status, 401);
+    assert.deepEqual(await rawSessionResponse.json(), {
+      code: "invalid_credentials",
+      message: "invalid_credentials",
+    });
     assert.equal(
       (await multiUserAuth.resolveSession(new Headers({ Cookie: secondCookie })))?.email,
       "second@example.com",
@@ -293,10 +387,12 @@ void describe("Cloudflare D1 integration", () => {
       assert.equal(blockedOrigin.status, 403);
 
       async function signIn(): Promise<{ cookie: string; sessionId: string; userId: string }> {
+        otp = "";
         const sendResponse = await managedAuth.handler(
           authRequest("/email-otp/send-verification-otp", { email: ownerEmail, type: "sign-in" }),
         );
         assert.equal(sendResponse.status, 200);
+        await waitForBackgroundEffect(() => otp !== "");
         const signInResponse = await managedAuth.handler(authRequest("/sign-in/email-otp", { email: ownerEmail, otp }));
         assert.equal(signInResponse.status, 200, await signInResponse.clone().text());
         const setCookie = signInResponse.headers.get("Set-Cookie");

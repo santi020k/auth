@@ -10,7 +10,9 @@ import {
   resolveOwnerAuthPolicy,
 } from "../src/index.js";
 
-function options(overrides: Partial<OwnerAuthPolicyOptions> = {}): OwnerAuthPolicyOptions {
+type SimpleOwnerAuthPolicyOptions = Extract<OwnerAuthPolicyOptions, { secret: string }>;
+
+function options(overrides: Partial<SimpleOwnerAuthPolicyOptions> = {}): SimpleOwnerAuthPolicyOptions {
   return {
     appName: "Example Owner Workspace",
     baseURL: "https://planner.example.com",
@@ -25,9 +27,12 @@ void describe("owner auth policy", () => {
   void it("normalizes the owner identity and derives an isolated relying-party ID", () => {
     const policy = resolveOwnerAuthPolicy(options());
     assert.deepEqual(policy, {
+      applicationOrigin: "https://planner.example.com",
+      authServerOrigin: "https://planner.example.com",
       basePath: "/api/auth",
       baseURL: "https://planner.example.com",
       cookiePrefix: "example-owner",
+      emailOtpRateLimit: { max: 3, window: 600 },
       origin: "https://planner.example.com",
       ownerEmail: "owner@example.com",
       relyingPartyId: "planner.example.com",
@@ -53,9 +58,12 @@ void describe("owner auth policy", () => {
       }),
     );
     assert.deepEqual(policy, {
+      applicationOrigin: "https://observatory.example.com",
+      authServerOrigin: "https://api.observatory.example.com",
       basePath: "/api/auth",
       baseURL: "https://api.observatory.example.com",
       cookiePrefix: "example-owner",
+      emailOtpRateLimit: { max: 3, window: 600 },
       origin: "https://observatory.example.com",
       ownerEmail: "owner@example.com",
       relyingPartyId: "observatory.example.com",
@@ -98,6 +106,25 @@ void describe("owner auth policy", () => {
   void it("requires a unique cookie prefix and a strong application secret", () => {
     assert.throws(() => resolveOwnerAuthPolicy(options({ cookiePrefix: "x" })), /owner_auth_cookie_prefix_invalid/u);
     assert.throws(() => resolveOwnerAuthPolicy(options({ secret: "short" })), /owner_auth_secret_invalid/u);
+  });
+
+  void it("retains v0.3 origin, secret-rotation, and OTP-rate-limit options", () => {
+    const policy = resolveOwnerAuthPolicy({
+      appName: "Legacy-compatible owner workspace",
+      applicationOrigin: "https://planner.example.com",
+      authServerURL: "https://api.planner.example.com",
+      cookiePrefix: "legacy-owner",
+      emailOtpRateLimit: { max: 4, window: 300 },
+      legacySecret: "l".repeat(32),
+      ownerEmail: "owner@example.com",
+      secrets: [
+        { value: "c".repeat(32), version: 2 },
+        { value: "p".repeat(32), version: 1 },
+      ],
+    });
+    assert.equal(policy.baseURL, "https://api.planner.example.com");
+    assert.equal(policy.origin, "https://planner.example.com");
+    assert.deepEqual(policy.emailOtpRateLimit, { max: 4, window: 300 });
   });
 
   void it("checks consumer-defined step-up freshness at exact boundaries", () => {
@@ -198,5 +225,26 @@ void describe("owner auth policy", () => {
       }),
     );
     assert.equal(response, null);
+  });
+
+  void it("handles an allowed split-origin preflight with credentialed CORS", async () => {
+    const policy = resolveOwnerAuthPolicy(
+      options({ baseURL: "https://api.planner.example.com", browserOrigin: "https://planner.example.com" }),
+    );
+    const response = await enforceOwnerAuthRequest(
+      policy,
+      new Request("https://api.planner.example.com/api/auth/sign-in/email-otp", {
+        headers: {
+          "Access-Control-Request-Headers": "content-type",
+          "Access-Control-Request-Method": "POST",
+          Origin: "https://planner.example.com",
+        },
+        method: "OPTIONS",
+      }),
+    );
+    assert.ok(response);
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://planner.example.com");
+    assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
   });
 });

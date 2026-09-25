@@ -8,7 +8,7 @@
       "entry": ["og.config.mjs", "src/pages/**/*.astro", "tests/**/*.ts"]
     },
     "packages/auth-cloudflare": {
-      "entry": ["src/*.ts", "tests/**/*.test.ts", "tests/subpath-types.ts"]
+      "entry": ["src/*.ts", "tests/**/*.test.ts", "tests/subpath-types.ts", "tests/v03-compat-types.ts"]
     },
     "packages/auth-client": {
       "entry": ["src/index.ts", "tests/**/*.test.ts"]

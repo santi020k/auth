@@ -35,6 +35,16 @@ test("registers a passkey and signs back in with it", async ({ page }) => {
     await page.getByRole("button", { name: "Use passkey" }).click();
     await expect(page.locator("#status")).toHaveText("Signed in with a passkey.");
     await expect(page.locator("#session")).toContainText("owner@example.com");
+
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.locator("#session")).toHaveText("Signed out");
+
+    const revokeResponse = await page.request.post("/api/dev/revoke-owner");
+    expect(revokeResponse.status()).toBe(200);
+
+    await page.getByRole("button", { name: "Use passkey" }).click();
+    await expect(page.locator("#session")).toHaveText("Signed out");
+    await expect(page.locator("#status")).toHaveAttribute("data-kind", "error");
   } finally {
     await cdp.send("WebAuthn.removeVirtualAuthenticator", {
       authenticatorId: authenticator.authenticatorId,

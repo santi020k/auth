@@ -13,10 +13,19 @@ and `browserOrigin` is the single exact browser origin allowed to make unsafe re
 
 ## Current status
 
-This package is private while the playground and initial consumers validate the integration. Do not publish it or
-replace an application's current authentication until its D1 migration, compatibility route, session cutover, and
-browser passkey flow have passed. The npm package page will remain unavailable until that evidence is complete; see the
-repository's [release process](https://github.com/santi020k/auth/blob/main/docs/releasing.md) for the exact gate.
+This package is already public. Version 0.4 preserves its v0.3 policy options and compatibility subpaths, but the six
+new split packages in this repository remain private while initial consumers validate the integration. Do not replace
+an application's current authentication until its D1 migration, compatibility route, session cutover, and browser
+passkey flow have passed; see the repository's
+[release process](https://github.com/santi020k/auth/blob/main/docs/releasing.md) for the exact gate.
+
+## v0.3 compatibility
+
+Existing consumers may continue using `applicationOrigin` and `authServerURL`; they are compatibility aliases for
+`browserOrigin` and `baseURL`. Versioned `secrets` with an optional `legacySecret`, configurable `emailOtpRateLimit`,
+and the original two-field `AuthSessionIdentity` assignment contract also remain supported. Newly resolved sessions
+include optional typed lifecycle fields (`authenticatedAt`, `expiresAt`, and `sessionId`). New code should use
+`browserOrigin` and `baseURL`; providing a legacy and replacement origin option with different values fails closed.
 
 ## Policy
 

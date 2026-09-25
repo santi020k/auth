@@ -12,14 +12,13 @@ import {
   type OwnerAuthEnv,
 } from "../src/hono.js";
 import {
-  type AuthSessionIdentity,
   type MultiUserAuthInstance,
   type OwnerAuthInstance,
-  type OwnerAuthSessionIdentity,
   resolveAuthTableNames,
+  type ResolvedAuthSessionIdentity,
 } from "../src/index.js";
 
-const identity: OwnerAuthSessionIdentity = {
+const identity: ResolvedAuthSessionIdentity = {
   authenticatedAt: "2026-09-25T12:00:00.000Z",
   email: "owner@example.com",
   expiresAt: "2026-10-25T12:00:00.000Z",
@@ -33,9 +32,12 @@ function ownerAuth(resolveSession: OwnerAuthInstance["resolveSession"]): OwnerAu
     handler: () => Promise.resolve(new Response()),
     listSessions: () => Promise.resolve([]),
     policy: {
+      applicationOrigin: "https://example.com",
+      authServerOrigin: "https://example.com",
       basePath: "/api/auth",
       baseURL: "https://api.example.com",
       cookiePrefix: "example-owner",
+      emailOtpRateLimit: { max: 3, window: 600 },
       origin: "https://example.com",
       ownerEmail: identity.email,
       relyingPartyId: "example.com",
@@ -54,9 +56,12 @@ function multiUserAuth(resolveSession: MultiUserAuthInstance["resolveSession"]):
     handler: () => Promise.resolve(new Response()),
     listSessions: () => Promise.resolve([]),
     policy: {
+      applicationOrigin: "https://example.com",
+      authServerOrigin: "https://example.com",
       basePath: "/api/auth",
       baseURL: "https://api.example.com",
       cookiePrefix: "example-members",
+      emailOtpRateLimit: { max: 3, window: 600 },
       origin: "https://example.com",
       relyingPartyId: "example.com",
       secureCookies: true,
@@ -70,7 +75,7 @@ function multiUserAuth(resolveSession: MultiUserAuthInstance["resolveSession"]):
 
 void describe("multi-user auth Hono middleware", () => {
   void it("exposes an approved identity through the generic session variable", async () => {
-    const memberIdentity: AuthSessionIdentity = {
+    const memberIdentity: ResolvedAuthSessionIdentity = {
       authenticatedAt: "2026-09-25T12:00:00.000Z",
       email: "member@example.com",
       expiresAt: "2026-10-25T12:00:00.000Z",

@@ -249,6 +249,48 @@ function parseSessionIdentity(value: unknown): AuthClientSessionIdentity | null 
   return { authenticatedAt, email, expiresAt, sessionId, userId };
 }
 
+async function runPasskeySignIn(
+  raw: SantiAuthClient,
+  options: SignInWithPasskeyOptions | undefined,
+  clientOptions: Required<AuthClientOptions>,
+): Promise<AuthClientResult<void>> {
+  const operation = await runVoidOperation(() => raw.signIn.passkey(options));
+  if (!operation.ok) return operation;
+  try {
+    const response = await fetch(
+      `${clientOptions.baseURL}${clientOptions.basePath}/get-session?disableCookieCache=true`,
+      {
+        cache: "no-store",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      },
+    );
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        data: null,
+        error: normalizeAuthClientError(
+          isRecord(payload) ? { ...payload, status: response.status } : { status: response.status },
+        ),
+        ok: false,
+      };
+    }
+    const identity = parseSessionIdentity(payload);
+    if (identity !== null && identity !== undefined) return operation;
+  } catch (error: unknown) {
+    return { data: null, error: normalizeAuthClientError(error), ok: false };
+  }
+  return {
+    data: null,
+    error: {
+      code: "auth_session_not_created",
+      message: "Passkey verification did not create a session",
+      status: 401,
+    },
+    ok: false,
+  };
+}
+
 interface ParsedSessionSummary {
   summary: AuthClientSessionSummary;
   token: string;
@@ -374,6 +416,7 @@ export function createSantiAuthClient(options: AuthClientOptions): SantiAuthClie
  * the inventory, while Better Auth still receives its opaque token.
  */
 export function createSantiAuthHelpers(options: AuthClientOptions): SantiAuthHelpers {
+  const resolved = resolveAuthClientOptions(options);
   const raw = createSantiAuthClient(options);
   const sessionTokens = new Map<string, string>();
 
@@ -422,7 +465,7 @@ export function createSantiAuthHelpers(options: AuthClientOptions): SantiAuthHel
     },
     renamePasskey: (passkeyId, name) => runVoidOperation(() => raw.passkey.updatePasskey({ id: passkeyId, name })),
     signInWithEmailOtp: (email, otp) => runVoidOperation(() => raw.signIn.emailOtp({ email, otp })),
-    signInWithPasskey: (passkeyOptions) => runVoidOperation(() => raw.signIn.passkey(passkeyOptions)),
+    signInWithPasskey: (passkeyOptions) => runPasskeySignIn(raw, passkeyOptions, resolved),
     signInWithSocial: (provider, socialOptions) =>
       runSocialFlow(() => raw.signIn.social(socialFlowBody(provider, socialOptions))),
     signOut: () => runVoidOperation(() => raw.signOut()),

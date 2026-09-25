@@ -7,6 +7,8 @@
 - e374e96: Split the Cloudflare authentication platform into typed client, Hono, migration, email, recovery, and testing packages;
   preserve the existing Cloudflare compatibility exports; add optional OAuth, Turnstile, recent-authentication guards,
   session lifecycle controls, isolated migration namespaces, localized delivery, and Web Crypto recovery primitives.
+  The public package retains the v0.3 origin aliases, versioned-secret rotation, configurable email OTP limits, exact
+  credentialed CORS, and source-compatible session identity shape.
 
 ### Patch Changes
 
