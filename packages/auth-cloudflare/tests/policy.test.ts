@@ -41,6 +41,12 @@ void describe("owner auth policy", () => {
     assert.equal(normalizeOwnerEmail(" OWNER@EXAMPLE.COM "), "owner@example.com");
   });
 
+  void it("rejects malformed and oversized email input in linear time", () => {
+    assert.throws(() => normalizeAuthEmail("missing-domain@"), /owner_auth_email_invalid/u);
+    assert.throws(() => normalizeAuthEmail("two@@example.com"), /owner_auth_email_invalid/u);
+    assert.throws(() => normalizeAuthEmail(`!@!.${"!.".repeat(100_000)}`), /owner_auth_email_invalid/u);
+  });
+
   void it("resolves the shared policy without exposing a consumer authorization callback", () => {
     const policy = resolveMultiUserAuthPolicy(options());
     assert.deepEqual(policy, {

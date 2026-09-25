@@ -5,7 +5,7 @@ import { emailOTP } from "better-auth/plugins";
 
 const DEFAULT_SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const MAX_EMAIL_LENGTH = 254;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CORS_METHODS = new Set(["GET", "HEAD", "POST"]);
 const CORS_HEADERS = new Set(["content-type"]);
@@ -148,7 +148,17 @@ function normalizeCookiePrefix(value: string): string {
 
 export function normalizeAuthEmail(value: string): string {
   const email = value.trim().toLowerCase();
-  if (!EMAIL_PATTERN.test(email)) throw new Error("owner_auth_email_invalid");
+  const atIndex = email.indexOf("@");
+  const domain = email.slice(atIndex + 1);
+  const dotIndex = domain.indexOf(".");
+  const isValid =
+    email.length <= MAX_EMAIL_LENGTH &&
+    atIndex > 0 &&
+    atIndex === email.lastIndexOf("@") &&
+    dotIndex > 0 &&
+    dotIndex < domain.length - 1 &&
+    !/\s/u.test(email);
+  if (!isValid) throw new Error("owner_auth_email_invalid");
   return email;
 }
 
