@@ -15,7 +15,10 @@
         }
       ],
       "pathname": "/",
-      "schemaTypes": ["WebSite", "SoftwareSourceCode"],
+      "schemaTypes": [
+        "WebSite",
+        "SoftwareSourceCode"
+      ],
       "title": "Reusable authentication policy"
     }
   },
