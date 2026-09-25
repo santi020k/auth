@@ -29,10 +29,12 @@ async function drainPendingTasks(): Promise<void> {
   await Promise.all(tasks);
 }
 
-function authRequest(path: string, body: Record<string, unknown>, ipAddress = "127.0.0.1"): Request {
+function authRequest(path: string, body: Record<string, unknown>, ipAddress = "127.0.0.1", cookie?: string): Request {
+  const headers = new Headers({ "CF-Connecting-IP": ipAddress, "Content-Type": "application/json", Origin: origin });
+  if (cookie) headers.set("Cookie", cookie);
   return new Request(`${origin}/api/auth${path}`, {
     body: JSON.stringify(body),
-    headers: { "CF-Connecting-IP": ipAddress, "Content-Type": "application/json", Origin: origin },
+    headers,
     method: "POST",
   });
 }
@@ -330,12 +332,42 @@ void describe("Cloudflare D1 integration", () => {
       .first<{ expiresAt: number; id: string; updatedAt: number }>();
     assert.deepEqual(revokedSessionAfterChecks, revokedSessionBeforeChecks);
 
+    const replacementCodeResponse = await multiUserApp.request(
+      authRequest(
+        "/email-otp/send-verification-otp",
+        { email: "second@example.com", type: "sign-in" },
+        "127.0.0.14",
+        firstCookie,
+      ),
+    );
+    assert.equal(replacementCodeResponse.status, 200);
+    await drainPendingTasks();
+    const replacementCode = deliveredCodes.get("second@example.com");
+    assert.ok(replacementCode);
+    const replacementSignInResponse = await multiUserApp.request(
+      authRequest(
+        "/sign-in/email-otp",
+        { email: "second@example.com", otp: replacementCode },
+        "127.0.0.14",
+        firstCookie,
+      ),
+    );
+    assert.equal(replacementSignInResponse.status, 200, await replacementSignInResponse.clone().text());
+    const replacementSetCookie = replacementSignInResponse.headers.get("Set-Cookie");
+    assert.ok(replacementSetCookie);
+    const replacementCookie = replacementSetCookie.split(";", 1)[0];
+    assert.ok(replacementCookie);
+    assert.equal(
+      (await multiUserAuth.resolveSession(new Headers({ Cookie: replacementCookie })))?.email,
+      "second@example.com",
+    );
+
     const sessionsBeforeRevokedSignIn = await database
       .prepare("SELECT COUNT(*) AS total FROM session WHERE userId = (SELECT id FROM user WHERE email = ?)")
       .bind("first@example.com")
       .first<{ total: number }>();
     const revokedSignInResponse = await multiUserApp.request(
-      authRequest("/sign-in/email-otp", { email: "first@example.com", otp: pendingCode }, "127.0.0.13"),
+      authRequest("/sign-in/email-otp", { email: "first@example.com", otp: pendingCode }, "127.0.0.13", firstCookie),
     );
     assert.notEqual(revokedSignInResponse.status, 200);
     assert.equal(revokedSignInResponse.headers.get("Set-Cookie"), null);

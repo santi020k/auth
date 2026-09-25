@@ -368,9 +368,16 @@ function isEmailOtpSendRequest(policy: AuthPolicy, request: Request): boolean {
   );
 }
 
-function isSessionCleanupRequest(policy: AuthPolicy, request: Request): boolean {
+function isSessionIndependentRequest(policy: AuthPolicy, request: Request): boolean {
+  const method = request.method.toUpperCase();
   const path = new URL(request.url).pathname;
-  return path === `${policy.basePath}/sign-out`;
+  return (
+    path === `${policy.basePath}/sign-out` ||
+    (method === "POST" && path === `${policy.basePath}/email-otp/send-verification-otp`) ||
+    (method === "POST" && path === `${policy.basePath}/sign-in/email-otp`) ||
+    (method === "GET" && path === `${policy.basePath}/passkey/generate-authenticate-options`) ||
+    (method === "POST" && path === `${policy.basePath}/passkey/verify-authentication`)
+  );
 }
 
 async function authorizeUserId(
@@ -504,7 +511,7 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
       if (
         currentSession &&
         !(await authorizeEmail(normalizeAuthEmail(currentSession.user.email))) &&
-        !isSessionCleanupRequest(policy, request)
+        !isSessionIndependentRequest(policy, request)
       ) {
         return withCors(policy, request, errorResponse(401, invalidCredentialsCode ?? "invalid_credentials"));
       }
