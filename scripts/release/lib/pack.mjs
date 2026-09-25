@@ -68,6 +68,31 @@ export function packPackage(pkgDir, destinationDir) {
 
   const parsed = JSON.parse(result.stdout);
   const tarballPath = parsed.filename;
-  const integrity = `sha512-${createHash("sha512").update(readFileSync(tarballPath)).digest("base64")}`;
-  return { tarballPath, files: parsed.files ?? [], integrity };
+  const contents = readFileSync(tarballPath);
+  const integrity = `sha512-${createHash("sha512").update(contents).digest("base64")}`;
+  const sha256 = createHash("sha256").update(contents).digest("hex");
+  return { tarballPath, files: parsed.files ?? [], integrity, sha256 };
+}
+
+export function readPackedManifest(tarballPath) {
+  const result = spawnSync("tar", ["-xOf", tarballPath, "package/package.json"], { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(`Could not read package.json from ${tarballPath}:\n${result.stderr || result.stdout}`);
+  }
+  return JSON.parse(result.stdout);
+}
+
+export function unresolvedProtocolIssues(manifest) {
+  const fields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
+  const issues = [];
+  for (const field of fields) {
+    const dependencies = manifest[field];
+    if (!dependencies || typeof dependencies !== "object") continue;
+    for (const [name, range] of Object.entries(dependencies)) {
+      if (typeof range === "string" && /^(?:catalog|file|link|workspace):/u.test(range)) {
+        issues.push(`${manifest.name}: packed ${field}.${name} still uses ${range}`);
+      }
+    }
+  }
+  return issues;
 }

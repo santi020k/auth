@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { assertTarballFiles } from "./pack.mjs";
+import { assertTarballFiles, unresolvedProtocolIssues } from "./pack.mjs";
 
 function pkg(overrides = {}) {
   return {
@@ -42,5 +42,28 @@ void describe("assertTarballFiles", () => {
     ];
     const issues = assertTarballFiles(files, pkg());
     assert.ok(issues.some((issue) => issue.includes('unexpectedly includes "src/index.ts"')));
+  });
+});
+
+void describe("unresolvedProtocolIssues", () => {
+  void it("accepts resolved dependency versions", () => {
+    assert.deepEqual(
+      unresolvedProtocolIssues({
+        dependencies: { "better-auth": "1.7.6" },
+        name: "@santi020k/auth-example",
+      }),
+      [],
+    );
+  });
+
+  void it("rejects workspace, catalog, file, and sibling-link dependencies", () => {
+    const issues = unresolvedProtocolIssues({
+      dependencies: { "@santi020k/auth-migrations": "workspace:*" },
+      devDependencies: { "better-auth": "catalog:" },
+      name: "@santi020k/auth-example",
+      optionalDependencies: { "@santi020k/local": "link:../local" },
+      peerDependencies: { "@santi020k/archive": "file:../archive.tgz" },
+    });
+    assert.equal(issues.length, 4);
   });
 });

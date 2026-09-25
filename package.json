@@ -33,6 +33,7 @@
     "lint:unused": "knip",
     "pre-commit": "lint-staged",
     "pre-push": "pnpm run verify",
+    "pilot:pack": "node scripts/release/pilot-pack.mjs",
     "release:version": "changeset version && pnpm install --lockfile-only",
     "release:pack": "pnpm --filter './packages/*' pack --dry-run",
     "release:publish": "node scripts/release/publish.mjs",

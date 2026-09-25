@@ -78,6 +78,16 @@ The repository is private, so npm cannot generate a public provenance attestatio
 `publishConfig.provenance` therefore remains `false`; enable it only if the repository becomes public and the npm
 provenance prerequisites are satisfied for that package.
 
+## Pre-publication consumer pilots
+
+The publication gate does not require consumers to use sibling-directory links. Before the six packages can be
+published, `pnpm pilot:pack -- <empty-output-directory>` creates a private consumer bundle from a clean committed
+revision. It keeps the six unpublished manifests marked `private: true`, packs all seven fixed-group packages, rejects
+unresolved workspace-local dependency protocols, and writes `pilot-bundle.json` plus `SHA256SUMS`. Consumers vendor
+that complete, versioned output and install the packages they need through checked-in `file:` dependencies as described
+in the [consumer integration checklist](consumer-integration.md). This bootstrap path creates no npm version, tag,
+GitHub Release, or public artifact and does not count as production evidence by itself.
+
 ## Automated releases
 
 After the trusted publishers exist, merging an exact `release/v<semver>` pull request runs `Release package`. The

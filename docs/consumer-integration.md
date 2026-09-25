@@ -14,6 +14,68 @@ Use the packages by responsibility:
   the atomic store, recovery authority, audit trail, session revocation, and replacement policy.
 - Use `@santi020k/auth-testing` only in test code for isolated D1 and request fixtures.
 
+## Private pilot installation
+
+Until the two-consumer production gate passes, the unpublished packages stay `private: true` and must not be fetched
+from npm. Generate one reviewed bundle from a clean, committed Auth revision:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm pilot:pack -- dist/pilot-bundle
+```
+
+Copy the complete output directory into a versioned `vendor/auth-v<version>/` directory in the consumer repository.
+Commit the tarballs, `pilot-bundle.json`, and `SHA256SUMS` together. The artifacts contain built package code and public
+metadata only; they contain no application secret or identity data. On Linux CI, verify the copy before installation:
+
+```sh
+(cd vendor/auth-v0.4.0 && sha256sum --check SHA256SUMS)
+```
+
+Reference each package the application uses with a `file:` path relative to the `package.json` that declares it, then
+run and commit the consumer's normal lockfile update:
+
+```json
+{
+  "dependencies": {
+    "@santi020k/auth-cloudflare": "file:vendor/auth-v0.4.0/santi020k-auth-cloudflare-0.4.0.tgz",
+    "@santi020k/auth-hono": "file:vendor/auth-v0.4.0/santi020k-auth-hono-0.4.0.tgz"
+  }
+}
+```
+
+`pnpm pack` resolves all `workspace:` and `catalog:` ranges in the packed manifests. `pilot:pack` verifies that no
+workspace-local protocol remains and records every bundled runtime dependency in `pilot-bundle.json`. If a selected
+package lists a `bundledDependencies` entry, add that dependency's tarball directly and add the corresponding
+`pnpmOverrideTargets` selector to the workspace-root `pnpm-workspace.yaml`. A direct dependency alone is not
+sufficient: pnpm can still resolve the packed package's transitive version from npm. In v0.4.0, this applies only to
+`@santi020k/auth-testing`. Add both packages to the appropriate manifest:
+
+```json
+{
+  "devDependencies": {
+    "@santi020k/auth-migrations": "file:vendor/auth-v0.4.0/santi020k-auth-migrations-0.4.0.tgz",
+    "@santi020k/auth-testing": "file:vendor/auth-v0.4.0/santi020k-auth-testing-0.4.0.tgz"
+  }
+}
+```
+
+Then route the internal version to the vendored artifact from the workspace root:
+
+```yaml
+overrides:
+  "@santi020k/auth-migrations@0.4.0": file:vendor/auth-v0.4.0/santi020k-auth-migrations-0.4.0.tgz
+```
+
+This keeps a clean consumer install from trying to resolve any private package from npm. In a monorepo, `file:` paths
+in the root override are relative to `pnpm-workspace.yaml`; dependency paths remain relative to the manifest
+that declares them.
+
+The committed consumer lockfile pins the tarball integrity. Keep the complete manifest and checksum file as source
+provenance, and regenerate the bundle for a different Auth commit or version; never overwrite an existing versioned
+vendor directory. After npm publication, replace the `file:` ranges with the released exact version in a separate,
+reviewed consumer change. A pilot bundle is not a package release and does not relax the production evidence gate.
+
 ## Required per application
 
 1. Create a dedicated D1 database binding and add an application-owned, additive migration based on the playground
