@@ -1,0 +1,23 @@
+{
+  "generatorVersion": "1.1.1",
+  "routes": {
+    "/": {
+      "alt": "santi020k auth — reusable authentication policy with isolated identity state",
+      "description": "Email-code and passkey authentication policy for isolated Hono applications running on Cloudflare Workers and D1.",
+      "images": [
+        {
+          "format": "webp",
+          "height": 630,
+          "output": "home.webp",
+          "primary": true,
+          "url": "/og/home.webp",
+          "width": 1200
+        }
+      ],
+      "pathname": "/",
+      "schemaTypes": ["WebSite", "SoftwareSourceCode"],
+      "title": "Reusable authentication policy"
+    }
+  },
+  "version": 1
+}

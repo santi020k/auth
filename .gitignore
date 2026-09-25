@@ -13,5 +13,4 @@ apps/playground/test-results/
 apps/website/playwright-report/
 apps/website/test-results/
 apps/website/.og-cache.json
-apps/website/public/og/
 .DS_Store
