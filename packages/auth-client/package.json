@@ -1,6 +1,6 @@
 {
   "name": "@santi020k/auth-client",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Typed browser client for Santiago-owned email OTP and passkey authentication.",
   "license": "MIT",

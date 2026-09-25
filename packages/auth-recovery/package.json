@@ -1,6 +1,6 @@
 {
   "name": "@santi020k/auth-recovery",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Consumer-owned, one-time recovery-code primitives for Santiago-owned authentication.",
   "license": "MIT",

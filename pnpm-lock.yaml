@@ -370,6 +370,9 @@ importers:
       "@cloudflare/workers-types":
         specifier: "catalog:"
         version: 5.20260924.1
+      "@playwright/test":
+        specifier: "catalog:"
+        version: 1.63.0
       esbuild:
         specifier: "catalog:"
         version: 0.28.2
@@ -444,9 +447,6 @@ importers:
       "@cloudflare/workers-types":
         specifier: "catalog:"
         version: 5.20260924.1
-      "@santi020k/auth-migrations":
-        specifier: workspace:*
-        version: link:../auth-migrations
       better-auth:
         specifier: "catalog:"
         version: 1.7.6

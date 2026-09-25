@@ -36,8 +36,8 @@ app.get("/api/dev/latest-code", async (context) => {
 app.get("/api/session", async (context) => {
   const auth = createOwnerAuth({
     appName: "santi020k auth playground",
-    applicationOrigin: context.env.APPLICATION_ORIGIN,
-    authServerURL: context.env.AUTH_SERVER_URL,
+    baseURL: context.env.AUTH_SERVER_URL,
+    browserOrigin: context.env.APPLICATION_ORIGIN,
     cookiePrefix: "santi-auth-playground",
     database: context.env.AUTH_DB,
     ownerEmail: context.env.OWNER_EMAIL,
@@ -53,8 +53,8 @@ app.get("/api/session", async (context) => {
 function createPlaygroundAuth(context: Context<{ Bindings: Bindings }>): OwnerAuthInstance {
   return createOwnerAuth({
     appName: "santi020k auth playground",
-    applicationOrigin: context.env.APPLICATION_ORIGIN,
-    authServerURL: context.env.AUTH_SERVER_URL,
+    baseURL: context.env.AUTH_SERVER_URL,
+    browserOrigin: context.env.APPLICATION_ORIGIN,
     cookiePrefix: "santi-auth-playground",
     database: context.env.AUTH_DB,
     ownerEmail: context.env.OWNER_EMAIL,

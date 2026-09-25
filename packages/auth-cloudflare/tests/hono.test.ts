@@ -11,55 +11,70 @@ import {
   OWNER_AUTH_SESSION_VARIABLE,
   type OwnerAuthEnv,
 } from "../src/hono.js";
-import type {
-  AuthSessionIdentity,
-  MultiUserAuthInstance,
-  OwnerAuthInstance,
-  OwnerAuthSessionIdentity,
+import {
+  type AuthSessionIdentity,
+  type MultiUserAuthInstance,
+  type OwnerAuthInstance,
+  type OwnerAuthSessionIdentity,
+  resolveAuthTableNames,
 } from "../src/index.js";
 
 const identity: OwnerAuthSessionIdentity = {
+  authenticatedAt: "2026-09-25T12:00:00.000Z",
   email: "owner@example.com",
+  expiresAt: "2026-10-25T12:00:00.000Z",
+  sessionId: "owner-session-id",
   userId: "owner-user-id",
 };
 
 function ownerAuth(resolveSession: OwnerAuthInstance["resolveSession"]): OwnerAuthInstance {
   return {
+    emergencyLockout: () => Promise.resolve(0),
     handler: () => Promise.resolve(new Response()),
+    listSessions: () => Promise.resolve([]),
     policy: {
-      applicationOrigin: "https://example.com",
-      authServerOrigin: "https://api.example.com",
       basePath: "/api/auth",
+      baseURL: "https://api.example.com",
       cookiePrefix: "example-owner",
-      emailOtpRateLimit: { max: 3, window: 600 },
+      origin: "https://example.com",
       ownerEmail: identity.email,
       relyingPartyId: "example.com",
       secureCookies: true,
+      tableNames: resolveAuthTableNames(),
     },
     resolveSession,
+    revokeAllSessions: () => Promise.resolve(0),
+    revokeSession: () => Promise.resolve(false),
   };
 }
 
 function multiUserAuth(resolveSession: MultiUserAuthInstance["resolveSession"]): MultiUserAuthInstance {
   return {
+    emergencyLockout: () => Promise.resolve(0),
     handler: () => Promise.resolve(new Response()),
+    listSessions: () => Promise.resolve([]),
     policy: {
-      applicationOrigin: "https://example.com",
-      authServerOrigin: "https://api.example.com",
       basePath: "/api/auth",
+      baseURL: "https://api.example.com",
       cookiePrefix: "example-members",
-      emailOtpRateLimit: { max: 3, window: 600 },
+      origin: "https://example.com",
       relyingPartyId: "example.com",
       secureCookies: true,
+      tableNames: resolveAuthTableNames(),
     },
     resolveSession,
+    revokeAllSessions: () => Promise.resolve(0),
+    revokeSession: () => Promise.resolve(false),
   };
 }
 
 void describe("multi-user auth Hono middleware", () => {
   void it("exposes an approved identity through the generic session variable", async () => {
     const memberIdentity: AuthSessionIdentity = {
+      authenticatedAt: "2026-09-25T12:00:00.000Z",
       email: "member@example.com",
+      expiresAt: "2026-10-25T12:00:00.000Z",
+      sessionId: "member-session-id",
       userId: "member-user-id",
     };
     const app = new Hono<AuthEnv>();

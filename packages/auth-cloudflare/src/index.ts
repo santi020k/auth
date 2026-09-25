@@ -1,13 +1,43 @@
 import { passkey } from "@better-auth/passkey";
 import type { D1Database } from "@cloudflare/workers-types";
-import { type AuthTableNames, resolveAuthTableNames } from "@santi020k/auth-migrations";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { captcha, emailOTP } from "better-auth/plugins";
 
 const DEFAULT_SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const TABLE_PREFIX_PATTERN = /^[a-z][a-z0-9_]{0,30}$/u;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+export interface AuthTableNames {
+  account: string;
+  passkey: string;
+  rateLimit: string;
+  session: string;
+  user: string;
+  verification: string;
+}
+
+/**
+ * Resolves the table names needed at runtime without making the already-public
+ * package depend on the still-private migration package. Contract tests keep
+ * this result aligned with `@santi020k/auth-migrations`.
+ */
+export function resolveAuthTableNames(tablePrefix?: string): AuthTableNames {
+  let prefix = "";
+  if (tablePrefix !== undefined && tablePrefix !== "") {
+    if (!TABLE_PREFIX_PATTERN.test(tablePrefix)) throw new Error("auth_table_prefix_invalid");
+    prefix = `${tablePrefix}_`;
+  }
+  return {
+    account: `${prefix}account`,
+    passkey: `${prefix}passkey`,
+    rateLimit: `${prefix}rateLimit`,
+    session: `${prefix}session`,
+    user: `${prefix}user`,
+    verification: `${prefix}verification`,
+  };
+}
 
 export interface AuthEmail {
   email: string;

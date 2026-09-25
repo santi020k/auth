@@ -86,7 +86,7 @@ const boundaries = [
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero-copy">
       <div class="hero-meta" aria-label="Package status">
-        <Badge variant="warning">Private preview</Badge>
+        <Badge variant="warning">Experimental public release</Badge>
         <span>v{packageVersion}</span>
         <span>Cloudflare Workers + D1</span>
       </div>
@@ -109,8 +109,8 @@ const boundaries = [
         </ButtonLink>
       </div>
       <p class="package-availability" id="package-availability">
-        <strong>npm publication is gated.</strong> The registry listing appears after two consumer migrations and real
-        origin passkey checks are complete.
+        <strong>Available on npm as experimental 0.x.</strong> The newer split packages remain gated until two consumers
+        complete migrations and real-origin passkey checks.
         <a href={npmPackageURL} target="_blank" rel="noopener noreferrer" aria-describedby="package-availability">
           npm package page
         </a>
@@ -138,7 +138,7 @@ const boundaries = [
         </dl>
         <div class="contract-footer">
           <span aria-hidden="true"></span>
-          No shared account system
+          No cross-application account system
         </div>
       </Card>
     </aside>
@@ -209,9 +209,8 @@ const boundaries = [
       <p>Integration</p>
       <h2 id="integrate-title">Small API, deliberate cutover</h2>
       <p>
-        The package stays private until two real consumers validate additive migrations and browser passkeys on their
-        final origins. The commands below document the future public contract; they will resolve from npm only after the
-        first approved release.
+        The compatibility package is public. Its newer client, Hono, migration, email, recovery, and testing packages
+        stay private until two real consumers validate additive migrations and browser passkeys on their final origins.
       </p>
       <a class="section-link" href={npmPackageURL} target="_blank" rel="noopener noreferrer">
         Check npm publication status

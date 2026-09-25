@@ -54,8 +54,10 @@ test("documents multi-user access without moving product authorization into the 
 
   await expect(page).toHaveTitle("Multi-user authentication · santi020k auth");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("More accounts, without a shared account system.");
-  await expect(page.getByText("Planned for v0.3.0", { exact: true })).toBeVisible();
+  await expect(page.getByText("Available since v0.3.0", { exact: true })).toBeVisible();
   await expect(page.getByText("createMultiUserAuth", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Membership records, roles, invitations, and recovery", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Expand access without weakening isolation." })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "On this page" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Authentication mode comparison" })).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://auth.santi020k.com/multi-user");
@@ -109,21 +111,4 @@ test("serves generated identity and discovery assets", async ({ request }) => {
     expect(response.ok(), `${path} should be available`).toBe(true);
     expect(response.headers()["content-type"]).toContain(contentType);
   }
-});
-
-test("documents the multi-user authorization boundary", async ({ page }) => {
-  await page.goto("/multi-user");
-
-  await expect(page).toHaveTitle("Multi-user authentication · santi020k auth");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("More accounts. The same hard boundary.");
-  await expect(page.getByText("Application-owned membership", { exact: true })).toBeVisible();
-  await expect(page.getByText("No authentication schema migration is required", { exact: true })).toBeVisible();
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://auth.santi020k.com/multi-user/");
-
-  const results = await new AxeBuilder({ page }).analyze();
-  const seriousViolations = results.violations.filter(({ impact }) => impact === "critical" || impact === "serious");
-  expect(seriousViolations).toEqual([]);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(
-    false,
-  );
 });
