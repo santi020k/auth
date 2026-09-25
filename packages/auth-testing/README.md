@@ -16,6 +16,8 @@ try {
 and exact-origin enforcement. Each vector includes its setup prerequisite so consumers remain responsible for arranging
 state through their public API and isolated database. `createConsumerIsolationFixtures()` supplies distinct table and
 cookie namespaces for a two-consumer isolation test, while `createAuthTestClock()` makes expiry boundaries deterministic.
+The rate-limit vector expects the enumeration-resistant public HTTP 200 response. Prove that throttling occurred through
+an isolated provider delivery count, a security event, or database state rather than exposing a public HTTP 429 oracle.
 
 `createWebAuthnBoundaryFixtures()` creates encoded `clientDataJSON` vectors for valid registration/authentication,
 wrong-origin, wrong-challenge, and cross-origin cases. They deliberately stop at the browser boundary: they do not claim

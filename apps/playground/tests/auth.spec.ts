@@ -25,6 +25,17 @@ test("registers a passkey and signs back in with it", async ({ page }) => {
     await expect(page.locator("#status")).toHaveText("Signed in with the email code.");
     await expect(page.locator("#session")).toContainText("owner@example.com");
 
+    await cdp.send("WebAuthn.setUserVerified", {
+      authenticatorId: authenticator.authenticatorId,
+      isUserVerified: false,
+    });
+    await page.getByRole("button", { name: "Add passkey" }).click();
+    await expect(page.locator("#status")).toHaveAttribute("data-kind", "error");
+
+    await cdp.send("WebAuthn.setUserVerified", {
+      authenticatorId: authenticator.authenticatorId,
+      isUserVerified: true,
+    });
     await page.getByRole("button", { name: "Add passkey" }).click();
     await expect(page.locator("#status")).toHaveText("Passkey added.");
 
@@ -32,6 +43,18 @@ test("registers a passkey and signs back in with it", async ({ page }) => {
     await expect(page.locator("#status")).toHaveText("Signed out.");
     await expect(page.locator("#session")).toHaveText("Signed out");
 
+    await cdp.send("WebAuthn.setUserVerified", {
+      authenticatorId: authenticator.authenticatorId,
+      isUserVerified: false,
+    });
+    await page.getByRole("button", { name: "Use passkey" }).click();
+    await expect(page.locator("#session")).toHaveText("Signed out");
+    await expect(page.locator("#status")).toHaveAttribute("data-kind", "error");
+
+    await cdp.send("WebAuthn.setUserVerified", {
+      authenticatorId: authenticator.authenticatorId,
+      isUserVerified: true,
+    });
     await page.getByRole("button", { name: "Use passkey" }).click();
     await expect(page.locator("#status")).toHaveText("Signed in with a passkey.");
     await expect(page.locator("#session")).toContainText("owner@example.com");

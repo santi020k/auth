@@ -128,6 +128,25 @@ void describe("owner auth policy", () => {
     assert.deepEqual(policy.emailOtpRateLimit, { max: 4, window: 300 });
   });
 
+  void it("rejects ambiguous secret configuration from untyped JavaScript callers", () => {
+    const simpleAndVersioned = {
+      ...options(),
+      secrets: [{ value: "v".repeat(32), version: 1 }],
+    };
+    const simpleAndLegacy = {
+      ...options(),
+      legacySecret: "l".repeat(32),
+    };
+    assert.throws(
+      () => Reflect.apply(resolveOwnerAuthPolicy, undefined, [simpleAndVersioned]),
+      /owner_auth_secret_options_conflict/u,
+    );
+    assert.throws(
+      () => Reflect.apply(resolveOwnerAuthPolicy, undefined, [simpleAndLegacy]),
+      /owner_auth_secret_options_conflict/u,
+    );
+  });
+
   void it("checks consumer-defined step-up freshness at exact boundaries", () => {
     const now = Date.parse("2026-09-25T12:00:00.000Z");
     assert.equal(isRecentAuthentication({ authenticatedAt: "2026-09-25T11:45:00.000Z" }, 15 * 60, now), true);

@@ -10,7 +10,9 @@
   The public package retains the v0.3 origin aliases, versioned-secret rotation, configurable email OTP limits, exact
   credentialed CORS, and source-compatible session identity shape. The pre-1.0 policy and instance interfaces now
   require resolved origin/table metadata, session-management methods, and lifecycle fields from `resolveSession`;
-  manually-authored policy literals and test doubles must migrate as documented in the package README.
+  manually-authored policy literals and test doubles must migrate as documented in the package README. Passkey
+  registration and authentication now fail closed unless the server-observed WebAuthn result confirms user verification,
+  and email-code request responses remain generic even when internal rate limiting rejects a request.
 
 ### Patch Changes
 

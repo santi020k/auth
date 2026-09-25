@@ -3,6 +3,8 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { APIError, betterAuth, type BetterAuthOptions } from "better-auth";
 import { captcha, emailOTP } from "better-auth/plugins";
 
+import { isPasskeyAuthenticationUserVerified, isPasskeyRegistrationUserVerified } from "./passkey-verification.js";
+
 const DEFAULT_SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
 const MAX_EMAIL_LENGTH = 254;
@@ -278,7 +280,24 @@ function validateSecret(value: string | undefined): void {
   if (value === undefined || value.trim().length < 32) throw new Error("owner_auth_secret_invalid");
 }
 
-function validateSecrets(options: AuthSecretOptions): void {
+interface RuntimeSecretOptions {
+  legacySecret?: string;
+  secret?: string;
+  secrets?: AuthVersionedSecret[];
+}
+
+function hasConflictingSecretOptions(options: RuntimeSecretOptions): boolean {
+  const usesVersionedSecrets = options.secrets !== undefined;
+  return (
+    (usesVersionedSecrets && options.secret !== undefined) ||
+    (!usesVersionedSecrets && options.legacySecret !== undefined)
+  );
+}
+
+function validateSecrets(options: RuntimeSecretOptions): void {
+  if (hasConflictingSecretOptions(options)) {
+    throw new Error("owner_auth_secret_options_conflict");
+  }
   if (options.secrets === undefined) {
     validateSecret(options.secret);
     return;
@@ -714,7 +733,10 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
       passkey({
         advanced: { webAuthnChallengeCookie: `${policy.cookiePrefix}-passkey` },
         authentication: {
-          afterVerification: async ({ clientData }) => {
+          afterVerification: async ({ clientData, verification }) => {
+            if (!isPasskeyAuthenticationUserVerified(verification)) {
+              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode });
+            }
             if (
               !(await authorizePasskeyCredential(
                 options.database,
@@ -730,6 +752,13 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
         },
         authenticatorSelection: { residentKey: "required", userVerification: "required" },
         origin: policy.origin,
+        registration: {
+          afterVerification: ({ verification }) => {
+            if (!isPasskeyRegistrationUserVerified(verification)) {
+              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode });
+            }
+          },
+        },
         rpID: policy.relyingPartyId,
         rpName: options.appName.trim(),
         schema: { passkey: { modelName: policy.tableNames.passkey } },

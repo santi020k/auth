@@ -168,9 +168,10 @@ export function createAuthContractFixtures(options: AuthContractFixtureOptions):
       }),
     },
     rateLimit: {
-      expectedFinalStatus: 429,
+      expectedFinalStatus: 200,
       kind: "rate-limit",
-      prerequisite: "Enable the consumer's production-equivalent rate-limit policy in an isolated database.",
+      prerequisite:
+        "Enable the consumer's production-equivalent rate-limit policy in an isolated database. Confirm throttling through delivery counts, security events, or isolated database state; the public response stays generic HTTP 200 to prevent identity enumeration.",
       requests: Array.from({ length: positiveAttempts(options.rateLimitAttempts) }, rateLimitRequest),
     },
     revokedSession: {

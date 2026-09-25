@@ -64,6 +64,8 @@ void describe("auth testing utilities", () => {
     assert.equal(fixtures.expiredSession.request.url, "https://app.example.com/private");
     assert.equal(fixtures.revokedSession.kind, "revoked-session");
     assert.equal(fixtures.rateLimit.requests.length, 4);
+    assert.equal(fixtures.rateLimit.expectedFinalStatus, 200);
+    assert.match(fixtures.rateLimit.prerequisite, /public response stays generic HTTP 200/u);
     assert.equal(fixtures.originAllowed.request.headers.get("Origin"), "https://app.example.com");
     assert.equal(fixtures.originRejected.request.headers.get("Origin"), "https://not-allowed.invalid");
     assert.notEqual(fixtures.rateLimit.requests[0], fixtures.rateLimit.requests[1]);

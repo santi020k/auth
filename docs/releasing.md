@@ -22,7 +22,9 @@ after publication succeeds.
 Publication order is topological with a stable alphabetical tie-break: a package publishes only after every other
 fixed-group package it depends on at runtime through a `workspace:*` dependency, peer dependency, or optional
 dependency has already published successfully. Independent packages may publish before `auth-migrations`, while
-`auth-cloudflare` and `auth-testing` publish after it. Development-only dependencies do not affect registry order.
+`auth-testing` publishes after `auth-migrations` because it has a runtime workspace dependency on it. `auth-cloudflare`
+is independent and currently precedes `auth-migrations` under the alphabetical tie-break. Development-only dependencies
+do not affect registry order.
 `scripts/release/lib/packages.mjs` computes this from the package manifests, so adding an internal runtime dependency
 automatically changes publish order without editing the workflow.
 
