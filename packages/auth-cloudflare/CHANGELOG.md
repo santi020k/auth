@@ -7,6 +7,12 @@
 - Add application-owned multi-user authorization with generic browser client, Hono middleware, schema diagnostics,
   membership revocation checks, and an integration guide while retaining the single-owner APIs.
 
+## 0.2.1
+
+### Patch Changes
+
+- Publish an installable npm artifact with workspace catalog dependencies rewritten to concrete versions.
+
 ## 0.2.0
 
 ### Minor Changes
