@@ -13,6 +13,19 @@ export default await defineConfig(
     ignores: ["**/dist/**", "**/dist-test/**", "apps/playground/public/app.js"],
   },
   {
+    settings: {
+      n: {
+        // Package `bin` fields point at built `dist/*.js` output; map TS
+        // sources to their built path so `n/hashbang` (and other `n/` rules
+        // that resolve `bin` entries) recognize a package-local CLI's source
+        // file as the bin file it compiles into.
+        convertPath: {
+          "src/**/*.ts": ["^src/(.+)\\.ts$", "dist/$1.js"],
+        },
+      },
+    },
+  },
+  {
     files: ["**/*.{astro,js,mjs,ts}"],
     rules: {
       "@stylistic/arrow-parens": ["warn", "always"],

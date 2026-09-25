@@ -28,6 +28,7 @@ catalog:
   "@santi020k/eslint-config-tools": 3.1.3
   "@santi020k/eslint-plugin-astro-doctor": 1.3.2
   "@santi020k/lumen-astro": 2.1.0
+  "@santi020k/og": 1.1.1
   "@types/node": 26.6.2
   astro: 7.3.5
   better-auth: 1.7.6
@@ -97,3 +98,6 @@ peerDependencyRules:
   # jsx-a11y 6.10.2 works through the owned ESLint 10 flat-config preset, but its published peer range stops at 9.
   allowedVersions:
     "eslint-plugin-jsx-a11y>eslint": "10"
+
+overrides:
+  vitest: 4.1.11

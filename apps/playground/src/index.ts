@@ -1,5 +1,6 @@
-import { createOwnerAuth, normalizeOwnerEmail } from "@santi020k/auth-cloudflare";
-import { Hono } from "hono";
+import { createOwnerAuth, normalizeOwnerEmail, type OwnerAuthInstance } from "@santi020k/auth-cloudflare";
+import { createHonoAuthHandler } from "@santi020k/auth-hono";
+import { type Context, Hono } from "hono";
 
 interface Bindings {
   ALLOW_LOCAL_CODE: string;
@@ -49,8 +50,8 @@ app.get("/api/session", async (context) => {
   return context.json(await auth.resolveSession(context.req.raw.headers), 200, { "Cache-Control": "no-store" });
 });
 
-app.all("/api/auth/*", async (context) => {
-  const auth = createOwnerAuth({
+function createPlaygroundAuth(context: Context<{ Bindings: Bindings }>): OwnerAuthInstance {
+  return createOwnerAuth({
     appName: "santi020k auth playground",
     applicationOrigin: context.env.APPLICATION_ORIGIN,
     authServerURL: context.env.AUTH_SERVER_URL,
@@ -73,8 +74,10 @@ app.all("/api/auth/*", async (context) => {
       context.executionCtx.waitUntil(task);
     },
   });
-  return auth.handler(context.req.raw);
-});
+}
+
+const authHandler = createHonoAuthHandler<{ Bindings: Bindings }>(createPlaygroundAuth);
+app.all("/api/auth/*", authHandler);
 
 app.all("*", (context) => context.env.ASSETS.fetch(context.req.raw));
 

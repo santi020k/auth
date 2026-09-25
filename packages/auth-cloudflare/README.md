@@ -1,183 +1,138 @@
 # `@santi020k/auth-cloudflare`
 
-Single-owner and multi-user email-code and passkey authentication policy for Hono applications running on Cloudflare
-Workers and D1.
-Better Auth owns the authentication protocol and persistence implementation; this package owns the shared Santiago
-policy.
+Email-code and passkey authentication policy for Hono applications running on Cloudflare Workers and D1. Choose a
+single configured owner or let the consuming application approve multiple identities. Better Auth owns the
+authentication protocol and persistence implementation; this package owns the shared Santiago policy.
 
 The package intentionally does not share sessions, cookies, passkeys, databases, secrets, or relying-party IDs between
-applications. Every consumer supplies a unique browser origin, auth server URL, cookie prefix, secret, D1 binding, and
-email delivery callback.
+applications. Every consumer supplies a unique origin, cookie prefix, secret, D1 binding, and email delivery callback.
 
-## Status
+When the authentication Worker is hosted separately from the browser application, `baseURL` is the public Worker URL
+and `browserOrigin` is the single exact browser origin allowed to make unsafe requests and register passkeys. Omitting
+`browserOrigin` keeps the same-origin default.
 
-This is a public experimental `0.x` package. Pin the version, review release notes before updating, and keep an
-application's existing authentication and recovery path during a bounded rollout. Real-world adoption validates a later
-promotion to supported/stable status; it is not a prerequisite for installing the package.
+## Current status
 
-## Install
-
-```sh
-pnpm add @santi020k/auth-cloudflare hono
-```
-
-The package exports:
-
-- `@santi020k/auth-cloudflare`: server policy with `createOwnerAuth` and `createMultiUserAuth`;
-- `@santi020k/auth-cloudflare/client`: credentialed owner and application browser clients with email OTP and passkeys;
-- `@santi020k/auth-cloudflare/hono`: typed owner and application session middleware for protected Hono routes;
-- `@santi020k/auth-cloudflare/schema`: owner and generic D1 schema diagnostics.
-
-The published tarball also includes `schema/d1.sql`, the canonical SQL to copy into an app-owned additive migration.
+This package is private while the playground and initial consumers validate the integration. Do not publish it or
+replace an application's current authentication until its D1 migration, compatibility route, session cutover, and
+browser passkey flow have passed. The npm package page will remain unavailable until that evidence is complete; see the
+repository's [release process](https://github.com/santi020k/auth/blob/main/docs/releasing.md) for the exact gate.
 
 ## Policy
 
 - Email OTPs are six digits, expire after ten minutes, allow five verification attempts, and are stored hashed.
-- Email OTP rate limits default to three requests per ten minutes and persist in D1 rather than isolate memory.
-- Only the configured owner or an email approved by the consumer's authorization callback may create or update an
-  identity.
+- Rate limits are enabled in every environment and use D1 rather than per-isolate memory.
+- Only the configured owner or identities approved by the consumer may create or update an identity.
 - Unauthorized email-code requests receive the same success-shaped response without sending mail.
-- Multi-user session creation, session resolution, and authenticated passkey operations recheck the callback, so
-  removing membership takes effect immediately even when a stored session has not expired.
-- Requests accept only the exact configured browser origin. Unsafe requests without it are rejected, and credentialed
-  CORS responses never use a wildcard origin.
+- Unsafe requests require the exact configured browser `Origin` header.
 - Passkeys require discoverable credentials and user verification.
-- The WebAuthn relying-party ID is the application hostname, including when the auth Worker uses its supported same-site
-  subdomain.
-- Production cookies are secure and scoped to the auth server hostname.
+- Optional social providers use the same consumer email-admission policy; provider credentials remain consumer-owned.
+- Optional Cloudflare Turnstile protection defaults to the email-code request endpoint.
+- The WebAuthn relying-party ID is always the exact application hostname.
+- Production cookies are secure and remain scoped to the authentication API hostname.
 
-## Server
-
-`applicationOrigin` is where the browser application runs. `authServerURL` is where the auth handler runs. Use the same
-origin for a simple deployment or the supported same-site subdomain shape for a separate Worker.
-
-```ts
-import { createOwnerAuth } from "@santi020k/auth-cloudflare";
-
-app.all("/api/auth/*", (context) => {
-  const ownerAuth = createOwnerAuth({
-    appName: "Example owner workspace",
-    applicationOrigin: "https://workspace.example.com",
-    authServerURL: "https://auth.workspace.example.com",
-    cookiePrefix: "example-owner",
-    database: context.env.DB,
-    ownerEmail: context.env.OWNER_EMAIL,
-    secret: context.env.AUTH_SECRET,
-    sendVerificationOTP: ({ email, otp }) => sendLoginCode(context.env, email, otp),
-    waitUntil: (task) => {
-      context.executionCtx.waitUntil(task);
-    },
-  });
-  return ownerAuth.handler(context.req.raw);
-});
-```
-
-For secret rotation, replace `secret` with versioned secrets:
+## Example
 
 ```ts
 const ownerAuth = createOwnerAuth({
-  // Other options omitted.
-  secrets: [
-    { value: env.AUTH_SECRET_V2, version: 2 },
-    { value: env.AUTH_SECRET_V1, version: 1 },
-  ],
-  legacySecret: env.AUTH_SECRET_LEGACY,
+  appName: "Example owner workspace",
+  baseURL: "https://planner.example.com",
+  cookiePrefix: "example-owner",
+  database: env.DB,
+  ownerEmail: env.OWNER_EMAIL,
+  secret: env.AUTH_SECRET,
+  sendVerificationOTP: ({ email, otp }) => sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.waitUntil(task),
+});
+
+app.all("/api/auth/*", (context) => ownerAuth.handler(context.req.raw));
+```
+
+For multiple accounts, keep membership and roles in the consuming application and provide a current access decision:
+
+```ts
+const auth = createMultiUserAuth({
+  appName: "Example team workspace",
+  authorizeEmail: async (email) => Boolean(await findActiveMember(env.DB, email)),
+  baseURL: "https://workspace.example.com",
+  cookiePrefix: "example-members",
+  database: env.DB,
+  secret: env.AUTH_SECRET,
+  sendVerificationOTP: ({ email, otp }) => sendLoginCode(env, email, otp),
 });
 ```
 
-Each value must contain at least 32 characters. Keep the active version first and retain previous versions only for the
-documented compatibility window.
-
-### Multiple accounts
-
-Use `createMultiUserAuth` when the application owns a set of approved accounts. The package normalizes the email before
-calling `authorizeEmail`; the callback may query an application-owned membership table or another authoritative local
-source. Keep invitations, roles, teams, and product permissions outside the auth package.
+For a split web/API deployment, keep the two security boundaries explicit:
 
 ```ts
-import { createMultiUserAuth } from "@santi020k/auth-cloudflare";
+const ownerAuth = createOwnerAuth({
+  appName: "Example control room",
+  baseURL: "https://api.example.com",
+  browserOrigin: "https://control.example.com",
+  cookiePrefix: "example-control-owner",
+  database: env.DB,
+  ownerEmail: env.OWNER_EMAIL,
+  secret: env.AUTH_SECRET,
+  sendVerificationOTP: ({ email, otp }) => sendLoginCode(env, email, otp),
+});
+```
 
+The API must still return credentialed CORS headers for that exact browser origin. `browserOrigin` does not accept an
+origin list and does not create a shared cookie domain.
+
+Set `tablePrefix` when the consumer database already contains generic tables such as `user` or `session`. Generate its
+app-owned migration with the same prefix through `@santi020k/auth-migrations`; a prefix is part of the persistent storage
+contract and must not be changed after deployment.
+
+`authorizeEmail` receives a normalized email address and is checked during code requests, identity writes, code
+delivery, and session resolution. A member rejected after signing in no longer resolves as authenticated. The package
+does not own roles, invitations, organizations, or cross-application identity state.
+
+Consumers may pass Better Auth `socialProviders` for approved OAuth providers. The package checks the fresh provider
+email before provisioning, linking, or OAuth sign-in, so OAuth cannot bypass `ownerEmail` or `authorizeEmail`.
+Account-linking UX, scopes, callback routes, and provider credentials remain consumer-owned.
+
+Public code-request surfaces can enable Turnstile through the same server policy:
+
+```ts
 const auth = createMultiUserAuth({
-  appName: "Example team workspace",
-  applicationOrigin: "https://workspace.example.com",
-  authServerURL: "https://auth.workspace.example.com",
-  cookiePrefix: "example-team",
-  database: context.env.DB,
-  secret: context.env.AUTH_SECRET,
-  authorizeEmail: (email) => isActiveMember(context.env.DB, email),
-  sendVerificationOTP: ({ email, otp }) => sendLoginCode(context.env, email, otp),
-  waitUntil: (task) => {
-    context.executionCtx.waitUntil(task);
+  // ...application-owned configuration
+  turnstile: {
+    allowedHostnames: ["workspace.example.com"],
+    expectedAction: "request-login-code",
+    secretKey: env.TURNSTILE_SECRET_KEY,
   },
 });
 ```
 
-Approved and rejected code requests intentionally receive the same success-shaped response. Rejected addresses do not
-receive mail and cannot create a user, though Better Auth may persist a hashed, expiring verification record as part of
-the uniform flow. Session creation, `resolveSession`, and authenticated passkey operations recheck current membership.
-Removing a member therefore prevents a new sign-in, passkey mutation, or subsequent session resolution; deleting stored
-session records is an optional application-owned cleanup.
-
-## Browser and protected routes
-
-```ts
-import { createOwnerAuthClient } from "@santi020k/auth-cloudflare/client";
-
-export const authClient = createOwnerAuthClient({
-  authServerURL: "https://auth.workspace.example.com",
-});
-```
-
-```ts
-import { createOwnerAuthMiddleware, type OwnerAuthEnv } from "@santi020k/auth-cloudflare/hono";
-import { Hono } from "hono";
-
-interface AppEnv extends OwnerAuthEnv {
-  Bindings: Bindings;
-}
-
-const protectedRoutes = new Hono<AppEnv>();
-protectedRoutes.use(
-  "*",
-  createOwnerAuthMiddleware<AppEnv>((context) => createOwnerAuthForContext(context)),
-);
-protectedRoutes.get("/account", (context) => context.json(context.var.ownerAuthSession));
-```
-
-`createOwnerAuthForContext` is an application-owned resolver that returns a `createOwnerAuth(...)` instance using the
-current request context and bindings, as in the server example above.
-
-For multi-user applications, use `createApplicationAuthClient` and `createAuthMiddleware`. The resolved identity is
-available as `context.var.authSession` and contains only `email` and `userId`; load roles from application-owned data.
-
-```ts
-import { createApplicationAuthClient } from "@santi020k/auth-cloudflare/client";
-import { createAuthMiddleware, type AuthEnv } from "@santi020k/auth-cloudflare/hono";
-
-export const authClient = createApplicationAuthClient({
-  authServerURL: "https://auth.workspace.example.com",
-});
-
-interface AppEnv extends AuthEnv {
-  Bindings: Bindings;
-}
-
-app.use(
-  "/account/*",
-  createAuthMiddleware<AppEnv>((context) => createAuthForContext(context)),
-);
-```
-
-## D1 ownership
+The browser supplies Better Auth's `x-captcha-response` header. Site and secret keys must not be shared across products.
 
 Cloudflare Workers must enable `nodejs_compat` (or the narrower `nodejs_als` flag when no other Node compatibility is
-needed). Copy `schema/d1.sql` into the consumer's migration directory, review it there, and apply it through that
-application's deployment process. This package never silently creates or mutates production tables.
+needed). Each application must generate and review its own Better Auth core and passkey migration; the package does not
+silently create or mutate production tables.
 
-Use `checkAuthSchema` (or the retained `checkOwnerAuthSchema` alias) from `@santi020k/auth-cloudflare/schema` to report
-missing required tables, columns, primary and unique key constraints, and indexes before serving authentication traffic.
-Application-owned extra schema is allowed. Moving from the owner factory to multi-user auth does not require an auth
-schema migration; the canonical tables already support multiple identities.
+## Session operations and security events
 
-See the complete [consumer integration checklist](https://github.com/santi020k/auth/blob/main/docs/consumer-integration.md)
-and [security policy](https://github.com/santi020k/auth/blob/main/SECURITY.md).
+The configured instance provides server-side `listSessions(userId)`, `revokeSession(userId, sessionId)`,
+`revokeAllSessions(userId)`, and `emergencyLockout(userId)` operations. Inventory entries contain ISO timestamps and
+device metadata but never session tokens, and expired sessions are omitted. The explicit `userId` scope prevents a
+session ID from revoking another account's session. Consumers must authenticate and authorize their own management
+routes before calling these methods; this package deliberately does not define roles, recovery, or administrative
+policy.
+
+Supply `onSecurityEvent` to forward authentication events into the consumer's established audit or alerting system:
+
+```ts
+const auth = createMultiUserAuth({
+  // ...application-owned configuration
+  onSecurityEvent: (event) => auditSecurityEvent(event),
+});
+```
+
+Events cover blocked origins or credentials, suppressed and failed email-code delivery, code requests, session
+creation, scoped revocation, revoke-all, and explicit emergency lockout. Listener failures are isolated from the auth
+flow. Event payloads intentionally omit codes, cookies, session tokens, secrets, and request bodies.
+
+Resolved identities include `authenticatedAt` and `expiresAt` ISO timestamps. Use `isRecentAuthentication` or the Hono
+recent-authentication middleware for sensitive actions. The application still chooses the step-up method and owns the
+authorization decision.

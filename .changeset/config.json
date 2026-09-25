@@ -2,10 +2,24 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.2/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [],
+  "fixed": [
+    [
+      "@santi020k/auth-client",
+      "@santi020k/auth-cloudflare",
+      "@santi020k/auth-email-resend",
+      "@santi020k/auth-hono",
+      "@santi020k/auth-migrations",
+      "@santi020k/auth-recovery",
+      "@santi020k/auth-testing"
+    ]
+  ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@santi020k/auth-playground"]
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  },
+  "ignore": ["@santi020k/auth-playground", "@santi020k/auth-website"]
 }

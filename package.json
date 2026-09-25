@@ -16,7 +16,9 @@
   "scripts": {
     "build": "pnpm --recursive --if-present run build",
     "check": "pnpm run verify",
-    "check:package": "pnpm --filter @santi020k/auth-cloudflare run check:package",
+    "check:package": "pnpm --filter './packages/*' --if-present run check:package",
+    "check:release": "node --test scripts/release/lib/*.test.mjs && node scripts/release/check.mjs",
+    "check:seo": "pnpm --filter @santi020k/auth-website run check:og && pnpm --filter @santi020k/auth-website run audit:seo",
     "check:security": "pnpm audit --prod --audit-level high",
     "commit": "commitprompt",
     "dev": "pnpm --filter @santi020k/auth-playground run dev",
@@ -32,11 +34,12 @@
     "pre-commit": "lint-staged",
     "pre-push": "pnpm run verify",
     "release:version": "changeset version && pnpm install --lockfile-only",
-    "release:pack": "pnpm --dir packages/auth-cloudflare pack --dry-run",
+    "release:pack": "pnpm --filter './packages/*' --if-present pack --dry-run",
+    "release:publish": "node scripts/release/publish.mjs",
     "test": "pnpm --recursive --if-present run test",
     "test:e2e": "pnpm --filter @santi020k/auth-playground run test:e2e && pnpm --filter @santi020k/auth-website run test:e2e",
     "typecheck": "pnpm --recursive --if-present run typecheck",
-    "verify": "pnpm --filter @santi020k/auth-cloudflare run build && pnpm run format:check && pnpm run lint && pnpm run build && pnpm run typecheck && pnpm run test && pnpm run test:e2e && pnpm run check:package && pnpm run check:security",
+    "verify": "pnpm --filter './packages/*' run build && pnpm run format:check && pnpm run lint && pnpm run build && pnpm run check:seo && pnpm run typecheck && pnpm run test && pnpm run test:e2e && pnpm run check:package && pnpm run check:release && pnpm run check:security",
     "changeset": "changeset"
   },
   "devDependencies": {
