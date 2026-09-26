@@ -11,10 +11,13 @@ const credentials = parseMachineCredentials(env.MACHINE_AUTH_CREDENTIALS);
 const principal = await resolveMachineBearer(request, credentials);
 ```
 
-Generate a credential once with `createMachineCredential`. Store only its returned `record` in the server's secret
-configuration. Deliver the raw `token` once to the client's secret manager or environment-variable injection path.
-Never place the raw token in source, plugin archives, logs, screenshots, or reusable agent definitions.
+Generate a credential once with `createMachineCredential`, including a required expiry and at least one explicit scope.
+Store only its returned `record` in the server's secret configuration. Deliver the raw `token` once to the client's
+secret manager or environment-variable injection path. Never place the raw token in source, plugin archives, logs,
+screenshots, or reusable agent definitions.
 
-Every credential has a stable ID, opaque subject, display name, explicit scopes, SHA-256 token digest, and optional
-expiry. Consumers remain responsible for choosing scopes, limiting which routes accept machine authentication,
-returning safe authorization errors, rotating credentials, and maintaining their own audit policy.
+Every credential has a stable ID, opaque subject, display name, creation time, required expiry, explicit scopes, and a
+SHA-256 token digest. Optional `notBefore` and `revokedAt` timestamps support bounded activation and immediate
+revocation. Pass `onSecurityEvent` to `resolveMachineBearer` for redacted success and rejection events; listener
+failures never alter authentication behavior. Consumers remain responsible for choosing scopes, limiting which routes
+accept machine authentication, returning safe authorization errors, rotating credentials, and storing audit events.

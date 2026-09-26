@@ -24,7 +24,7 @@ Use `pnpm commit` for the repository's Commitprompt workflow. Keep migrations ad
 application. Do not introduce shared databases, secrets, cookies, sessions, passkeys, relying-party IDs, or recovery
 policy between consumers.
 
-Changes that affect a publishable package need a Changeset. Every package remains private until the release gates in
-`docs/production-readiness.md` are complete. Use `pnpm run check:release` to validate metadata, Changesets coherence,
+Changes that affect a publishable package need a Changeset. Use the release gates in
+`docs/production-readiness.md` before publication. Run `pnpm run check:release` to validate metadata, Changesets coherence,
 and pack contents across all eight packages, and `pnpm release:pack` to inspect the exact npm tarballs before proposing
 a release. Release preparation and publication follow `docs/releasing.md`; do not create package tags manually.

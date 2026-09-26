@@ -13,7 +13,7 @@ catalog:
   "@astrojs/check": 0.9.10
   "@axe-core/playwright": 4.13.0
   "@changesets/cli": 3.0.3
-  "@cloudflare/workers-types": 5.20260924.1
+  "@cloudflare/workers-types": 5.20260926.1
   "@playwright/test": 1.63.0
   "@astrojs/sitemap": 3.7.4
   "@santi020k/astro-doctor": 1.3.2
@@ -40,11 +40,11 @@ catalog:
   lint-staged: 17.5.1
   miniflare: 5.20260923.0-alpha
   prettier: 3.9.9
-  prettier-plugin-astro: 1.0.1
+  prettier-plugin-astro: 1.1.0
   publint: 0.3.24
   # TypeScript 6+ removes APIs still required by the current owned ESLint and Astro toolchain.
   typescript: 5.9.3
-  wrangler: 4.139.0
+  wrangler: 4.141.0
 
 minimumReleaseAgeExclude:
   - "@better-auth/core@1.7.6"
@@ -55,14 +55,14 @@ minimumReleaseAgeExclude:
   - "@better-auth/passkey@1.7.6"
   - "@better-auth/prisma-adapter@1.7.6"
   - "@better-auth/telemetry@1.7.6"
-  - "@cloudflare/workers-types@5.20260924.1"
+  - "@cloudflare/workers-types@5.20260926.1"
   - "@santi020k/eslint-config-basic@3.5.4"
   - "@santi020k/eslint-config-core@3.1.3"
   - "@santi020k/eslint-config-typescript@3.1.5"
   - better-auth@1.7.6
   - hono@4.13.9
-  - miniflare@5.20260921.1-alpha || 5.20260923.0-alpha
-  - wrangler@4.138.0 || 4.139.0
+  - miniflare@5.20260921.1-alpha || 5.20260923.0-alpha || 5.20260925.0-alpha
+  - wrangler@4.141.0
   - "@santi020k/eslint-config-extensions@3.1.3"
   - "@santi020k/eslint-config-hono@3.1.2"
   - "@santi020k/eslint-config-libraries@3.1.3"

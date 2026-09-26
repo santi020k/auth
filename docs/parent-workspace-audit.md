@@ -15,12 +15,9 @@ verified on the real origin.
 | Aaronmgz admin             | Strong: Hono/D1 API with an authoritative administrator directory                      | Disabled-by-default `/api/auth-v2/*` pilot, prefix-isolated `aaron_admin_auth_v2` migration in Aaron's own D1, active-admin authorization, and a separate `aaron-admin-auth-v2` cookie. Guest identity and legacy administrator auth remain separate.                                             |
 | The Cult dashboard         | Strong after adding an app-owned Worker/D1 boundary                                    | New optional auth Worker, prefix-isolated `cult_auth` migration, exact-origin CORS, Resend delivery, Turnstile-ready email codes, server sessions, and recent-authentication protection for emergency lockout. The existing local prototype remains available when no auth API URL is configured. |
 
-PostLens and Observatory use vendored artifacts as an interim distribution mechanism. The newer local pilots use
-workspace links while the split packages remain private; release consumers must replace those development links with
-published versions after the publication gate passes.
-
-These are local, additive integrations. None is production evidence: no migration was applied remotely and no real
-origin, transactional email, or passkey ceremony was exercised.
+PostLens and Observatory use vendored artifacts as an interim distribution mechanism. The newer local integrations use
+workspace links; release consumers must replace development links with exact published versions. Package publication
+is independent of product rollout readiness.
 
 `memudo.ai` was not assessed further because the owner explicitly excluded it from this rollout.
 
@@ -64,8 +61,6 @@ identity stores.
 - Product-specific administrator recovery authority, recovery UI, and recovery-event delivery.
 - Product-specific OAuth provider credentials, consent UX, and provider-specific claim policy.
 - Native mobile/desktop token exchange, PKCE, and device-bound session support.
-- Production evidence from two real origins: email receipt, passkey registration/sign-in, expiry, rate limiting, sign-out,
-  revocation, recovery, and rollback.
 
 The library now includes safe session inventory and revocation, explicit emergency lockout, typed security-event hooks,
 versioned additive migration planning, localized Resend delivery, and a localhost-only development mailbox. Consumers

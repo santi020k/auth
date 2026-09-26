@@ -37,30 +37,22 @@ application secrets.
 
 ## Package publication gate
 
-Keep every not-yet-published package in the fixed release group (`@santi020k/auth-client`,
-`@santi020k/auth-email-resend`, `@santi020k/auth-hono`, `@santi020k/auth-machine`, `@santi020k/auth-migrations`,
-`@santi020k/auth-recovery`, `@santi020k/auth-testing`) private until at least two separate applications have completed
-every item below. `@santi020k/auth-cloudflare` already has a public compatibility contract; retain its existing exports
-and do not treat it as an initial publication:
+Package publication depends on repository and release integrity, not a required number of consumer deployments. Before
+publishing the fixed release group:
 
-1. The application owns and successfully applies its additive D1 migration.
-2. Existing login and recovery paths remain available during a bounded compatibility window.
-3. Real transactional email delivery is verified without logging, displaying, or returning the code.
-4. Approved and rejected email behavior, expiry, attempts, rate limiting, sign-out, revocation, and cross-origin
-   rejection are verified.
-5. Passkey registration and sign-in succeed in a real browser on the application's final HTTPS origin.
-6. Recovery is documented and tested for that application.
-   If recovery codes are enabled, only digests are persisted, replacement is app-owned, and concurrent consumption
-   proves that exactly one attempt succeeds.
-7. Cookies, secrets, databases, passkeys, relying-party IDs, and recovery policy remain isolated from every other
-   consumer.
+1. Run the repository gate above on the exact release revision.
+2. Confirm all eight package manifests are public, versioned together, and pass `pnpm run check:release` plus
+   `pnpm release:pack`.
+3. Preserve the released `@santi020k/auth-cloudflare` compatibility exports and include migration notes for intentional
+   experimental `0.x` changes.
+4. Verify npm ownership, the one-time initial-publication order, and trusted-publisher configuration described in
+   [package releases](releasing.md).
+5. Obtain explicit authorization immediately before the initial npm publications or release workflow changes registry,
+   tag, or GitHub Release state.
 
-After two consumers satisfy the gate, remove `private: true` from each unpublished package deliberately, add a
-Changeset, verify package ownership, and follow [package releases](releasing.md). Each new package's initial npm
-publication is the only manual publication, performed once per package in dependency order, because npm requires a
-package to exist before trusted publishing can be configured for it. Every subsequent release must use a
-`release/v<semver>` pull request and GitHub Actions, which publishes, verifies, and tags all eight packages together in
-dependency order; do not publish later releases manually from a workstation.
+Consumer readiness remains application-owned. Each product must validate its additive migration, compatibility path,
+real delivery, browser passkeys, recovery, rollback, and identity-state isolation before replacing its existing login;
+those product checks do not block publication of the reusable packages.
 
 ## Rollback and recovery
 

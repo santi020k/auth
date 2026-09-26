@@ -21,9 +21,8 @@ recovery process, and deployment.
 - `@santi020k/auth-recovery`: subject-scoped, peppered one-time recovery-code issuance and consumption primitives.
 - `@santi020k/auth-testing`: isolated Miniflare D1 fixtures and auth request helpers.
 
-The new split packages, including `@santi020k/auth-recovery`, remain private until two pilot consumers complete
-verification on their real origins. The existing public `@santi020k/auth-cloudflare` contract and its compatibility
-subpaths remain supported. Sharing a package never creates a shared account system.
+The split packages are prepared for the v0.4.0 public release. The existing `@santi020k/auth-cloudflare` contract and
+its compatibility subpaths remain supported. Sharing a package never creates a shared account system.
 
 ## Workspace
 
@@ -33,14 +32,13 @@ subpaths remain supported. Sharing a package never creates a shared account syst
 - `apps/playground`: local-only Hono/D1 app for email-code and platform-passkey verification.
 - `apps/website`: Astro and Lumen documentation site prepared for `auth.santi020k.com`.
 
-Every not-yet-published split package remains private while the playground and the first two consumers validate
-migrations, compatibility, recovery, and passkeys on their real origins. No consumer should replace an existing login
-system solely because the packages build.
+Publication makes the reusable packages installable; it does not prove a consumer migration. No application should
+replace an existing login system until its own migration, compatibility, recovery, delivery, and passkey checks pass.
 
 - Website: [auth.santi020k.com](https://auth.santi020k.com)
 - Source: [github.com/santi020k/auth](https://github.com/santi020k/auth)
 - Existing npm package: [`@santi020k/auth-cloudflare`](https://www.npmjs.com/package/@santi020k/auth-cloudflare)
-- Split-package status: private and unpublished until the production-readiness gate passes.
+- Split-package status: prepared for initial publication with v0.4.0.
 
 ## Develop
 

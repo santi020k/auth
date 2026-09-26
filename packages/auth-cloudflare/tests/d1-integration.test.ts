@@ -413,6 +413,7 @@ void describe("Cloudflare D1 integration", () => {
         secret: "integration-test-secret-that-is-at-least-32-characters",
         sendVerificationOTP: () => Promise.resolve(),
         tablePrefix: "denial",
+        waitUntil: waitUntilForTest,
       });
 
       const attackerRequest = () =>
@@ -437,6 +438,51 @@ void describe("Cloudflare D1 integration", () => {
         method: "POST",
       });
       assert.equal((await floodAuth.handler(otherIpRequest)).status, 200);
+    } finally {
+      await isolatedHarness.dispose();
+    }
+  });
+
+  void it("prunes expired rate-limit rows through explicit consumer-owned maintenance", async () => {
+    const isolatedHarness = await createAuthD1TestHarness({ tablePrefix: "retention" });
+    try {
+      const retentionAuth = createOwnerAuth({
+        appName: "Rate-limit retention integration test",
+        baseURL: origin,
+        cookiePrefix: "integration-retention",
+        database: isolatedHarness.database,
+        ownerEmail,
+        secret: "integration-test-secret-that-is-at-least-32-characters",
+        sendVerificationOTP: () => Promise.resolve(),
+        tablePrefix: "retention",
+        waitUntil: waitUntilForTest,
+      });
+      const now = Date.parse("2026-09-26T00:00:00Z");
+      await isolatedHarness.database
+        .prepare(
+          'INSERT INTO "retention_rateLimit" ("id", "key", "count", "lastRequest") VALUES (?, ?, ?, ?), (?, ?, ?, ?)',
+        )
+        .bind(
+          "stale",
+          "pre-auth:stale",
+          1,
+          now - 2 * 24 * 60 * 60 * 1000,
+          "fresh",
+          "pre-auth:fresh",
+          1,
+          now - 60 * 60 * 1000,
+        )
+        .run();
+
+      assert.equal(await retentionAuth.pruneRateLimits({ now }), 1);
+      const remaining = await isolatedHarness.database
+        .prepare('SELECT "key" FROM "retention_rateLimit" ORDER BY "key"')
+        .all<{ key: string }>();
+      assert.deepEqual(remaining.results, [{ key: "pre-auth:fresh" }]);
+      await assert.rejects(
+        retentionAuth.pruneRateLimits({ now, retentionSeconds: 0 }),
+        /auth_rate_limit_retention_invalid/u,
+      );
     } finally {
       await isolatedHarness.dispose();
     }

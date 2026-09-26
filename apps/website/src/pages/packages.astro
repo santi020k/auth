@@ -1,0 +1,184 @@
+---
+import { Badge, ButtonLink, Card, CodeTabs } from "@santi020k/lumen-astro";
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { packagesPage, packagesStructuredData } from "../lib/seo";
+
+const installExamples = [
+  {
+    code: "pnpm add @santi020k/auth-cloudflare@0.4.0 @santi020k/auth-hono@0.4.0 @santi020k/auth-client@0.4.0",
+    label: "Browser auth",
+    language: "shell",
+    value: "browser",
+  },
+  {
+    code: "pnpm add @santi020k/auth-machine@0.4.0",
+    label: "Machine auth",
+    language: "shell",
+    value: "machine",
+  },
+  {
+    code: "pnpm add @santi020k/auth-recovery@0.4.0 @santi020k/auth-email-resend@0.4.0",
+    label: "Recovery + email",
+    language: "shell",
+    value: "operations",
+  },
+] as const;
+
+const machineExample = [
+  {
+    code: `const created = await createMachineCredential({
+  credentialId: "nightly-sync",
+  expiresAt: "2026-12-31T23:59:59Z",
+  name: "Nightly sync",
+  scopes: ["contacts:read", "reports:write"],
+  subject: "job:nightly-sync",
+});
+
+// Persist only created.record. Deliver created.token once.
+const principal = await resolveMachineBearer(request, records, {
+  onSecurityEvent: (event) => audit(event),
+});
+
+if (!principal) return new Response("Unauthorized", { status: 401 });
+assertMachineScopes(principal, ["reports:write"]);`,
+    label: "Lifecycle",
+    language: "typescript",
+    value: "lifecycle",
+  },
+] as const;
+
+const maintenanceExample = [
+  {
+    code: `export default {
+  async scheduled(_event, env) {
+    const auth = createOwnerAuth(authOptions(env));
+    await auth.pruneRateLimits();
+  },
+};`,
+    label: "Scheduled cleanup",
+    language: "typescript",
+    value: "scheduled",
+  },
+] as const;
+
+const packages = [
+  ["auth-cloudflare", "Server policy", "Email codes, passkeys, sessions, origin enforcement, and D1-backed limits."],
+  ["auth-client", "Browser client", "Typed email, passkey, session, OAuth, and sign-out helpers."],
+  ["auth-hono", "HTTP adapter", "Hono routing, exact credentialed CORS, and recent-authentication middleware."],
+  ["auth-machine", "Automation", "Expiring, scoped bearer credentials stored only as token digests."],
+  ["auth-migrations", "Schema", "Reviewed app-owned D1 SQL, version planning, and compatibility diagnostics."],
+  ["auth-email-resend", "Delivery", "Bounded Resend requests, localized templates, and redacted delivery events."],
+  ["auth-recovery", "Recovery", "Subject-scoped one-time codes with consumer-owned atomic persistence."],
+  ["auth-testing", "Verification", "Isolated Miniflare D1 harnesses and reusable contract fixtures."],
+] as const;
+---
+
+<BaseLayout page={packagesPage} structuredData={packagesStructuredData}>
+  <section class="docs-hero" aria-labelledby="packages-title">
+    <div>
+      <div class="hero-meta" aria-label="Release status">
+        <Badge variant="success">v0.4.0</Badge>
+        <span>Eight focused packages</span>
+      </div>
+      <h1 id="packages-title">Install only the authentication boundary you own.</h1>
+      <p>
+        The workspace separates browser, server, machine, migration, delivery, recovery, and test responsibilities while
+        keeping every consumer’s identities and secrets independent.
+      </p>
+      <div class="hero-actions">
+        <ButtonLink href="#choose" showArrow>
+          Choose packages
+        </ButtonLink>
+        <ButtonLink href="#machine" variant="secondary" showArrow>
+          Secure automation
+        </ButtonLink>
+      </div>
+    </div>
+    <aside>
+      <Card class="docs-summary" variant="muted">
+        <p class="card-kicker">Release contract</p>
+        <dl class="docs-definition-list">
+          <div>
+            <dt>Versioned together</dt>
+            <dd>One fixed v0.4.0 release group</dd>
+          </div>
+          <div>
+            <dt>State stays local</dt>
+            <dd>No shared users, cookies, D1, passkeys, or recovery authority</dd>
+          </div>
+          <div>
+            <dt>Public API</dt>
+            <dd>Experimental 0.x contracts with explicit migration notes</dd>
+          </div>
+        </dl>
+      </Card>
+    </aside>
+  </section>
+
+  <div class="docs-layout">
+    <nav class="docs-nav" aria-label="On this page">
+      <p>On this page</p>
+      <a href="#choose">Package map</a>
+      <a href="#install">Install</a>
+      <a href="#machine">Machine credentials</a>
+      <a href="#maintenance">Maintenance</a>
+      <a href="#rollout">Consumer rollout</a>
+    </nav>
+
+    <div class="docs-content">
+      <section id="choose" aria-labelledby="choose-title">
+        <p class="docs-kicker">Package map</p>
+        <h2 id="choose-title">Responsibility is the package boundary.</h2>
+        <div class="package-guide-grid">
+          {packages.map(([name, responsibility, description]) => (
+            <Card as="article" class="package-guide-card">
+              <Badge variant="outline">{responsibility}</Badge>
+              <h3>@santi020k/{name}</h3>
+              <p>{description}</p>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section id="install" aria-labelledby="install-title">
+        <p class="docs-kicker">Install</p>
+        <h2 id="install-title">Compose the smallest useful set.</h2>
+        <p>Pin the same release version for every Auth package used by one consumer.</p>
+        <CodeTabs ariaLabel="Package installation by responsibility" items={installExamples} theme="lumen" />
+      </section>
+
+      <section id="machine" aria-labelledby="machine-title">
+        <p class="docs-kicker">Machine credentials</p>
+        <h2 id="machine-title">Expire, scope, rotate, and observe every automation client.</h2>
+        <p>
+          Machine credentials require an expiry and explicit scopes. Persist only the returned digest record, deliver
+          the raw token once through a secret manager, and use redacted events for consumer-owned auditing.
+        </p>
+        <CodeTabs ariaLabel="Machine credential lifecycle" items={machineExample} theme="lumen" />
+      </section>
+
+      <section id="maintenance" aria-labelledby="maintenance-title">
+        <p class="docs-kicker">Operations</p>
+        <h2 id="maintenance-title">Bound persistent rate-limit storage.</h2>
+        <p>
+          D1 rate limits survive Worker restarts. Call <code>pruneRateLimits</code> from an app-owned scheduled handler;
+          the default retains 24 hours and never changes schemas implicitly.
+        </p>
+        <CodeTabs ariaLabel="Rate-limit retention maintenance" items={maintenanceExample} theme="lumen" />
+      </section>
+
+      <section id="rollout" aria-labelledby="rollout-title">
+        <p class="docs-kicker">Consumer rollout</p>
+        <h2 id="rollout-title">Publication and product cutover are separate decisions.</h2>
+        <p>
+          Public packages can be installed without sharing identity state. Each product still owns its additive
+          migration, compatibility window, delivery, browser passkeys, recovery, rollback, and final authorization.
+        </p>
+        <ButtonLink href="https://github.com/santi020k/auth/blob/main/docs/consumer-integration.md" newTab showArrow>
+          Open the integration checklist
+        </ButtonLink>
+      </section>
+    </div>
+  </div>
+</BaseLayout>

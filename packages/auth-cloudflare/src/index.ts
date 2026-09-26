@@ -7,6 +7,7 @@ import { isPasskeyAuthenticationUserVerified, isPasskeyRegistrationUserVerified 
 
 const DEFAULT_SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
+const DEFAULT_RATE_LIMIT_RETENTION_SECONDS = 24 * 60 * 60;
 const MAX_EMAIL_LENGTH = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const TABLE_PREFIX_PATTERN = /^[a-z][a-z0-9_]{0,30}$/u;
@@ -197,6 +198,8 @@ interface AuthInstance<TPolicy extends AuthPolicy> {
   /** Lists `userId`'s active sessions, newest first. */
   listSessions(userId: string): Promise<AuthSessionSummary[]>;
   policy: TPolicy;
+  /** Deletes expired rate-limit counters. Call from consumer-owned scheduled maintenance. */
+  pruneRateLimits(options?: { now?: number; retentionSeconds?: number }): Promise<number>;
   resolveSession(headers: Headers): Promise<ResolvedAuthSessionIdentity | null>;
   /** Revokes every session for `userId`. Returns the count revoked. */
   revokeAllSessions(userId: string): Promise<number>;
@@ -728,6 +731,23 @@ async function revokeAllAuthSessionsForUser(
   return result.meta.changes;
 }
 
+async function pruneAuthRateLimits(
+  database: D1Database,
+  rateLimitTable: string,
+  options: { now?: number; retentionSeconds?: number } = {},
+): Promise<number> {
+  const now = options.now ?? Date.now();
+  const retentionSeconds = options.retentionSeconds ?? DEFAULT_RATE_LIMIT_RETENTION_SECONDS;
+  if (!Number.isFinite(now) || !Number.isSafeInteger(retentionSeconds) || retentionSeconds <= 0) {
+    throw new Error("auth_rate_limit_retention_invalid");
+  }
+  const result = await database
+    .prepare(`DELETE FROM "${rateLimitTable}" WHERE "lastRequest" <= ?`)
+    .bind(now - retentionSeconds * 1000)
+    .run();
+  return result.meta.changes;
+}
+
 function createConfiguredAuth<TPolicy extends AuthPolicy>(
   options: BaseAuthPolicyOptions & AuthRuntimeOptions,
   policy: TPolicy,
@@ -913,6 +933,7 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
     listSessions: (userId: string): Promise<AuthSessionSummary[]> =>
       listAuthSessionsForUser(options.database, policy.tableNames.session, userId),
     policy,
+    pruneRateLimits: (pruneOptions) => pruneAuthRateLimits(options.database, policy.tableNames.rateLimit, pruneOptions),
     resolveSession: async (headers: Headers): Promise<ResolvedAuthSessionIdentity | null> => {
       const session = await auth.api.getSession({
         headers,

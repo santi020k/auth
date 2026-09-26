@@ -27,7 +27,7 @@ void describe("validatePackageMetadata", () => {
     const pkg = { dir: "auth-example", manifest: manifest({ private: true }) };
     assert.deepEqual(validatePackageMetadata(pkg, { requirePublishable: false }), []);
     assert.deepEqual(validatePackageMetadata(pkg, { requirePublishable: true }), [
-      "@santi020k/auth-example: still private; publication is blocked until the two-consumer production gate passes",
+      "@santi020k/auth-example: private packages cannot be published by the release workflow",
     ]);
   });
 
@@ -63,7 +63,6 @@ void describe("validateFixedGroupCoherence", () => {
   const config = {
     fixed: [["@santi020k/auth-cloudflare", "@santi020k/auth-migrations"]],
     ignore: [],
-    privatePackages: { tag: false, version: true },
   };
 
   void it("passes when the fixed group exactly matches packages on disk with equal versions", () => {
@@ -88,13 +87,5 @@ void describe("validateFixedGroupCoherence", () => {
       ignore: ["@santi020k/auth-migrations"],
     });
     assert.ok(issues.some((issue) => issue.includes('depends on workspace package "@santi020k/auth-migrations"')));
-  });
-
-  void it("requires private package versioning while suppressing Changesets tags", () => {
-    const issues = validateFixedGroupCoherence(packages, {
-      ...config,
-      privatePackages: { tag: true, version: false },
-    });
-    assert.ok(issues.some((issue) => issue.includes("version private packages without tagging them")));
   });
 });

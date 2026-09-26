@@ -16,6 +16,9 @@
 
 ### Patch Changes
 
+- Bound requests rejected before Better Auth through an atomic D1 counter, expose explicit scheduled rate-limit
+  retention, and return actionable `Retry-After` metadata without weakening generic email-discovery responses.
+
 - Updated dependencies [e374e96]
   - @santi020k/auth-migrations@0.4.0
 

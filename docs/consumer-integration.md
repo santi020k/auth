@@ -14,10 +14,10 @@ Use the packages by responsibility:
   the atomic store, recovery authority, audit trail, session revocation, and replacement policy.
 - Use `@santi020k/auth-testing` only in test code for isolated D1 and request fixtures.
 
-## Private pilot installation
+## Optional pre-release installation
 
-Until the two-consumer production gate passes, the unpublished packages stay `private: true` and must not be fetched
-from npm. Generate one reviewed bundle from a clean, committed Auth revision:
+Before a new version reaches npm, generate one reviewed bundle from a clean, committed Auth revision when a consumer
+needs to validate the exact candidate:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -67,14 +67,14 @@ overrides:
   "@santi020k/auth-migrations@0.4.0": file:vendor/auth-v0.4.0/santi020k-auth-migrations-0.4.0.tgz
 ```
 
-This keeps a clean consumer install from trying to resolve any private package from npm. In a monorepo, `file:` paths
+This keeps a clean consumer install from resolving a not-yet-published version from npm. In a monorepo, `file:` paths
 in the root override are relative to `pnpm-workspace.yaml`; dependency paths remain relative to the manifest
 that declares them.
 
 The committed consumer lockfile pins the tarball integrity. Keep the complete manifest and checksum file as source
 provenance, and regenerate the bundle for a different Auth commit or version; never overwrite an existing versioned
 vendor directory. After npm publication, replace the `file:` ranges with the released exact version in a separate,
-reviewed consumer change. A pilot bundle is not a package release and does not relax the production evidence gate.
+reviewed consumer change. A pre-release bundle is not a package release.
 
 ## Required per application
 

@@ -5,6 +5,8 @@ export const siteDescription =
   "Email-code and passkey authentication policy for isolated Hono applications running on Cloudflare Workers and D1.";
 const multiUserDescription =
   "Authenticate multiple consumer-approved accounts without sharing identities, roles, sessions, or databases between applications.";
+const packagesDescription =
+  "Choose and operate the v0.4 authentication packages for browser, server, machine, migration, recovery, email, and testing boundaries.";
 
 export const authSite = defineSite({
   defaults: {
@@ -61,6 +63,19 @@ export const multiUserPage = authSite.page({
   title: "Multi-user authentication",
 });
 
+export const packagesPage = authSite.page({
+  description: packagesDescription,
+  image: {
+    alt: "santi020k auth — reusable authentication package responsibilities",
+    height: 630,
+    output: "home.webp",
+    width: 1200,
+  },
+  pathname: "/packages",
+  schemaTypes: ["WebPage"],
+  title: "Package guide",
+});
+
 const author = defineSchema({
   "@id": "https://santi020k.com/#person",
   "@type": "Person",
@@ -81,6 +96,23 @@ export const multiUserStructuredData = composeJsonLd(
     }),
     name: "Multi-user authentication",
     url: "https://auth.santi020k.com/multi-user",
+  }),
+  author,
+);
+
+export const packagesStructuredData = composeJsonLd(
+  webPageSchema({
+    description: packagesDescription,
+    id: "https://auth.santi020k.com/packages#webpage",
+    inLanguage: "en",
+    isPartOf: defineSchema({
+      "@id": "https://auth.santi020k.com/#website",
+      "@type": "WebSite",
+      name: "santi020k auth",
+      url: "https://auth.santi020k.com",
+    }),
+    name: "Package guide",
+    url: "https://auth.santi020k.com/packages",
   }),
   author,
 );

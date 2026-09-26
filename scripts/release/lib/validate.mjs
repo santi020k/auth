@@ -33,7 +33,7 @@ function metadataRules(manifest, pkg, label, requirePublishable) {
       valid: Array.isArray(manifest.files) && manifest.files.includes("dist"),
     },
     {
-      message: `${label}: still private; publication is blocked until the two-consumer production gate passes`,
+      message: `${label}: private packages cannot be published by the release workflow`,
       valid: !requirePublishable || manifest.private !== true,
     },
   ];
@@ -91,22 +91,12 @@ export function validateFixedGroupCoherence(packages, changesetConfig) {
   const publishableOnDisk = new Set([...byName.keys()].filter((name) => !ignored.has(name)));
 
   const fixedGroups = changesetConfig.fixed ?? [];
-  const privatePackageIssues =
-    changesetConfig.privatePackages?.version === true && changesetConfig.privatePackages?.tag === false
-      ? []
-      : [
-          ".changeset/config.json must version private packages without tagging them while the two-consumer gate remains closed",
-        ];
   if (fixedGroups.length !== 1) {
-    return [
-      ...privatePackageIssues,
-      `.changeset/config.json "fixed" must declare exactly one release group, found ${fixedGroups.length}`,
-    ];
+    return [`.changeset/config.json "fixed" must declare exactly one release group, found ${fixedGroups.length}`];
   }
 
   const declared = new Set(fixedGroups[0]);
   return [
-    ...privatePackageIssues,
     ...missingFromFixedGroupIssues(publishableOnDisk, declared),
     ...staleFixedGroupEntryIssues(declared, publishableOnDisk),
     ...versionDriftIssues(declared, byName),

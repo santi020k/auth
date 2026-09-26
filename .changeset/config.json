@@ -18,9 +18,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "privatePackages": {
-    "version": true,
-    "tag": false
-  },
   "ignore": ["@santi020k/auth-playground", "@santi020k/auth-website"]
 }

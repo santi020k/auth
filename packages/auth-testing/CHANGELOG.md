@@ -12,5 +12,7 @@
 
 ### Patch Changes
 
+- Extract multiple response cookies without comma corruption and add deterministic consumer-boundary fixtures.
+
 - Updated dependencies [e374e96]
   - @santi020k/auth-migrations@0.4.0

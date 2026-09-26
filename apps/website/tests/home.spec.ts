@@ -75,6 +75,21 @@ test("keeps the multi-user guide accessible and within the viewport", async ({ p
   expect(overflows).toBe(false);
 });
 
+test("documents package responsibilities and secure operating boundaries", async ({ page }) => {
+  await page.goto("/packages");
+  await expect(page).toHaveTitle("Package guide · santi020k auth");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install only the authentication boundary you own.");
+  await expect(page.getByText("@santi020k/auth-machine", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bound persistent rate-limit storage." })).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://auth.santi020k.com/packages");
+  const results = await new AxeBuilder({ page }).analyze();
+  const seriousViolations = results.violations.filter(({ impact }) => impact === "critical" || impact === "serious");
+  expect(seriousViolations).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(
+    false,
+  );
+});
+
 test("has no serious accessibility violations or horizontal overflow", async ({ page }) => {
   await page.goto("/");
   const results = await new AxeBuilder({ page }).analyze();

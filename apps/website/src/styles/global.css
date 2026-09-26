@@ -685,6 +685,30 @@ main {
   line-height: 1.6;
 }
 
+.package-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.package-guide-card {
+  min-width: 0;
+  padding: 1.25rem;
+}
+
+.package-guide-card h3 {
+  overflow-wrap: anywhere;
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.package-guide-card p {
+  margin: 0;
+  color: hsl(var(--ink-soft));
+  line-height: 1.6;
+}
+
 .checklist {
   display: grid;
   gap: 0.8rem;
@@ -838,6 +862,7 @@ main {
   .feature-grid,
   .readiness-grid,
   .code-grid,
+  .package-guide-grid,
   .boundary-list {
     grid-template-columns: 1fr;
   }

@@ -1,7 +1,6 @@
 {
   "name": "@santi020k/auth-testing",
   "version": "0.4.0",
-  "private": true,
   "description": "Miniflare D1 fixtures and request helpers for Santiago-owned authentication consumers.",
   "license": "MIT",
   "author": {
@@ -30,12 +29,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@cloudflare/workers-types": "catalog:",
     "@santi020k/auth-migrations": "workspace:*",
     "miniflare": "catalog:"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
-    "@cloudflare/workers-types": "catalog:",
     "@types/node": "catalog:",
     "publint": "catalog:",
     "typescript": "catalog:"

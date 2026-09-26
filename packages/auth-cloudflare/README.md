@@ -13,11 +13,10 @@ and `browserOrigin` is the single exact browser origin allowed to make unsafe re
 
 ## Current status
 
-This package is already public. Version 0.4 preserves its v0.3 policy options and compatibility subpaths, but the six
-new split packages in this repository remain private while initial consumers validate the integration. Do not replace
-an application's current authentication until its D1 migration, compatibility route, session cutover, and browser
-passkey flow have passed; see the repository's
-[release process](https://github.com/santi020k/auth/blob/main/docs/releasing.md) for the exact gate.
+This package is already public. Version 0.4 preserves its v0.3 policy options and compatibility subpaths and prepares
+the seven split packages for public release. Publication does not replace consumer rollout validation: an application
+must still prove its own D1 migration, compatibility route, session cutover, and browser passkey flow. See the
+repository's [release process](https://github.com/santi020k/auth/blob/main/docs/releasing.md).
 
 ## v0.3 compatibility
 
@@ -30,7 +29,7 @@ include optional typed lifecycle fields (`authenticatedAt`, `expiresAt`, and `se
 Version 0.4 intentionally expands three pre-1.0 TypeScript contracts. Code that manually constructs an `AuthPolicy`
 must use `resolveOwnerAuthPolicy` or `resolveMultiUserAuthPolicy` so the new `baseURL`, `origin`, and `tableNames` fields
 are present. Test doubles typed as `OwnerAuthInstance` or `MultiUserAuthInstance` must add the session inventory,
-revocation, and emergency-lockout methods. Their `resolveSession` implementation must return the lifecycle fields in
+revocation, emergency-lockout, and rate-limit pruning methods. Their `resolveSession` implementation must return the lifecycle fields in
 `ResolvedAuthSessionIdentity`. Runtime consumers that call the factory functions require no adapter.
 
 ## Policy
@@ -134,6 +133,11 @@ The browser supplies Better Auth's `x-captcha-response` header. Site and secret 
 Cloudflare Workers must enable `nodejs_compat` (or the narrower `nodejs_als` flag when no other Node compatibility is
 needed). Each application must generate and review its own Better Auth core and passkey migration; the package does not
 silently create or mutate production tables.
+
+D1 rate-limit counters are persistent. Call `auth.pruneRateLimits()` from the consuming application's scheduled
+maintenance to remove counters older than the default 24-hour retention window. A consumer may provide a positive
+`retentionSeconds` override and deterministic `now` value for testing. Cleanup is explicit and never changes schemas or
+runs implicitly inside an authentication request.
 
 ## Session operations and security events
 

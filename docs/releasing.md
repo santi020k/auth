@@ -2,10 +2,9 @@
 
 `@santi020k/auth-cloudflare` already has a public npm contract, including its compatibility subpaths. The newer
 `@santi020k/auth-client`, `@santi020k/auth-email-resend`, `@santi020k/auth-hono`, `@santi020k/auth-machine`,
-`@santi020k/auth-migrations`, `@santi020k/auth-recovery`, and `@santi020k/auth-testing` packages are not currently
-published. Their `private: true` manifest flags are an intentional release gate, not a registry or GitHub Actions
-failure. Publication remains blocked until two independent consumers complete the production evidence in
-[production readiness](production-readiness.md).
+`@santi020k/auth-migrations`, `@santi020k/auth-recovery`, and `@santi020k/auth-testing` packages are prepared for their
+initial public publication in v0.4.0. Their first registry publication requires the one-time bootstrap below; later
+versions use trusted publishing.
 
 ## Fixed release group
 
@@ -14,9 +13,8 @@ bumps all of them to the same version, even if a given release only changed one 
 (part of `pnpm verify`) enforces that the group stays coherent — every publishable package under `packages/*` is listed
 in the fixed group, nothing stale remains in the group, every package's version matches the others, and no package
 depends on a workspace package that has drifted outside the group. `apps/playground` and `apps/website` are excluded
-from the group through `.changeset/config.json`'s `ignore` list; they are never published. Changesets is configured to
-version the packages while they remain private, but not to tag them; the release workflow owns immutable tags only
-after publication succeeds.
+from the group through `.changeset/config.json`'s `ignore` list; they are never published. The release workflow owns
+immutable tags only after publication succeeds.
 
 ## Dependency order
 
@@ -44,15 +42,15 @@ pnpm release:pack
 
 `pnpm release:version` bumps every package in the fixed group to the same `<semver>`. Commit the generated version and
 changelog changes, obtain the required independent pre-push review, then open a pull request from `release/v<semver>`
-to `main`. The release pull request must include consumer evidence, migration notes, and a rollback or
-forward-recovery plan.
+to `main`. The release pull request must include compatibility and migration notes plus a rollback or forward-recovery
+plan.
 
 ## Initial npm publication
 
 npm requires a package to exist before a trusted publisher can be attached to it, so the first publication of each of
 the seven unpublished split packages is a manual, one-time exception. Perform it once per new package, in dependency
-order, after the two-consumer gate passes and `private: true` has been removed in the release pull request. Do not
-repeat initial publication for `@santi020k/auth-cloudflare`:
+order, from the verified merged release commit and with explicit action-time authorization. Do not repeat initial
+publication for `@santi020k/auth-cloudflare`:
 
 ```sh
 git switch main
@@ -80,15 +78,14 @@ The repository is private, so npm cannot generate a public provenance attestatio
 `publishConfig.provenance` therefore remains `false`; enable it only if the repository becomes public and the npm
 provenance prerequisites are satisfied for that package.
 
-## Pre-publication consumer pilots
+## Optional pre-publication bundle
 
-The publication gate does not require consumers to use sibling-directory links. Before the six packages can be
-published, `pnpm pilot:pack -- <empty-output-directory>` creates a private consumer bundle from a clean committed
-revision. It keeps the six unpublished manifests marked `private: true`, packs all seven fixed-group packages, rejects
-unresolved workspace-local dependency protocols, and writes `pilot-bundle.json` plus `SHA256SUMS`. Consumers vendor
-that complete, versioned output and install the packages they need through checked-in `file:` dependencies as described
-in the [consumer integration checklist](consumer-integration.md). This bootstrap path creates no npm version, tag,
-GitHub Release, or public artifact and does not count as production evidence by itself.
+`pnpm pilot:pack -- <empty-output-directory>` can create a reviewable consumer bundle from a clean committed revision
+before registry publication. It packs all eight fixed-group packages, rejects unresolved workspace-local dependency
+protocols, and writes `pilot-bundle.json` plus `SHA256SUMS`. Consumers may vendor that complete, versioned output and
+install the packages they need through checked-in `file:` dependencies as described in the
+[consumer integration checklist](consumer-integration.md). This optional path creates no npm version, tag, GitHub
+Release, or public artifact.
 
 ## Automated releases
 
@@ -125,4 +122,4 @@ publish — without publishing, tagging, or touching git or GitHub:
 pnpm run release:publish -- --dry-run
 ```
 
-This still fails closed while any package in the fixed group is private, exactly like the real workflow.
+This requires every package in the fixed group to be publishable, exactly like the real workflow.
