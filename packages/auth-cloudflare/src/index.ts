@@ -1,14 +1,63 @@
 import { passkey } from "@better-auth/passkey";
 import type { D1Database } from "@cloudflare/workers-types";
 import { APIError, betterAuth, type BetterAuthOptions } from "better-auth";
-import { emailOTP } from "better-auth/plugins";
+import { captcha, emailOTP } from "better-auth/plugins";
+
+import { isPasskeyAuthenticationUserVerified, isPasskeyRegistrationUserVerified } from "./passkey-verification.js";
 
 const DEFAULT_SESSION_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
+const DEFAULT_RATE_LIMIT_RETENTION_SECONDS = 24 * 60 * 60;
 const MAX_EMAIL_LENGTH = 254;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const TABLE_PREFIX_PATTERN = /^[a-z][a-z0-9_]{0,30}$/u;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CORS_METHODS = new Set(["GET", "HEAD", "POST"]);
 const CORS_HEADERS = new Set(["content-type"]);
+
+export interface AuthTableNames {
+  account: string;
+  passkey: string;
+  rateLimit: string;
+  session: string;
+  user: string;
+  verification: string;
+}
+
+/**
+ * Resolves the table names needed at runtime without making the already-public
+ * package depend on the still-private migration package. Contract tests keep
+ * this result aligned with `@santi020k/auth-migrations`.
+ */
+export function resolveAuthTableNames(tablePrefix?: string): AuthTableNames {
+  let prefix = "";
+  if (tablePrefix !== undefined && tablePrefix !== "") {
+    if (!TABLE_PREFIX_PATTERN.test(tablePrefix)) throw new Error("auth_table_prefix_invalid");
+    prefix = `${tablePrefix}_`;
+  }
+  return {
+    account: `${prefix}account`,
+    passkey: `${prefix}passkey`,
+    rateLimit: `${prefix}rateLimit`,
+    session: `${prefix}session`,
+    user: `${prefix}user`,
+    verification: `${prefix}verification`,
+  };
+}
+
+/**
+ * Better Auth's own rate limiter never runs for a request this package rejects before
+ * calling `auth.handler` (an unauthorized email must never reach it, so no OTP row gets
+ * created for an address that will never receive one). Without an independent limit here,
+ * that rejection path — which still calls the consumer's `authorizeEmail`, a D1 lookup for
+ * multi-user consumers — would accept unlimited requests per IP. This backstop is deliberately
+ * more generous than Better Auth's own tight per-path special rules (window 60s, max 3): those
+ * still apply on top of this for any request that turns out to be authorized, so this only
+ * needs to turn "unlimited" into "bounded" without constraining legitimate retry bursts.
+ */
+const PRE_AUTH_RATE_LIMIT_WINDOW_SECONDS = 60;
+const PRE_AUTH_RATE_LIMIT_MAX = 20;
+const NO_TRUSTED_IP_KEY = "no-trusted-ip";
 
 export interface AuthEmail {
   email: string;
@@ -21,12 +70,10 @@ export interface AuthEmailOtpRateLimit {
 }
 
 export type AuthVersionedSecret = NonNullable<BetterAuthOptions["secrets"]>[number];
-
-export type OwnerAuthEmail = AuthEmail;
 export type OwnerAuthEmailOtpRateLimit = AuthEmailOtpRateLimit;
 export type OwnerAuthVersionedSecret = AuthVersionedSecret;
 
-interface OwnerAuthSimpleSecretOptions {
+interface AuthSimpleSecretOptions {
   legacySecret?: never;
   secret: string;
   secrets?: never;
@@ -38,65 +85,143 @@ interface AuthVersionedSecretOptions {
   secrets: AuthVersionedSecret[];
 }
 
-type AuthSecretOptions = OwnerAuthSimpleSecretOptions | AuthVersionedSecretOptions;
+type AuthSecretOptions = AuthSimpleSecretOptions | AuthVersionedSecretOptions;
 
-interface AuthPolicyConfiguration {
+/**
+ * Observability hook for security-relevant occurrences. Consumers own
+ * storage and alerting; this package only reports what happened. A listener
+ * that throws never breaks the authentication flow — the failure is
+ * swallowed after the listener runs.
+ */
+export type AuthSecurityEvent =
+  | { email: string; path: string; type: "credentials_rejected" }
+  | { email: string; type: "email_otp_delivery_failed" }
+  | { email: string; type: "email_otp_delivery_suppressed" }
+  | { email: string; type: "email_otp_requested" }
+  | { revokedSessions: number; type: "emergency_lockout"; userId: string }
+  | { origin: string | null; path: string; type: "request_origin_rejected" }
+  | { path: string; type: "request_rate_limited" }
+  | { sessionId: string; type: "session_created"; userId: string }
+  | { sessionId: string; type: "session_revoked"; userId: string }
+  | { revokedSessions: number; type: "sessions_revoked_all"; userId: string };
+
+export type AuthSecurityEventListener = (event: AuthSecurityEvent) => Promise<void> | void;
+
+interface BaseAuthPolicyConfiguration {
   appName: string;
-  applicationOrigin: string;
-  authServerURL: string;
+  /** @deprecated Use `browserOrigin`. */
+  applicationOrigin?: string;
   basePath?: `/${string}`;
+  baseURL?: string;
+  browserOrigin?: string;
   cookiePrefix: string;
+  /** @deprecated Use `baseURL`. */
+  authServerURL?: string;
   emailOtpRateLimit?: AuthEmailOtpRateLimit;
+  /** Optional Better Auth social providers. Credentials remain consumer-owned secrets. */
+  socialProviders?: BetterAuthOptions["socialProviders"];
+  tablePrefix?: string;
+  /** Optional Cloudflare Turnstile protection for authentication endpoints. */
+  turnstile?: AuthTurnstileOptions;
 }
 
-interface AuthRuntimeConfiguration {
+type BaseAuthPolicyOptions = BaseAuthPolicyConfiguration & AuthSecretOptions;
+
+export interface AuthTurnstileOptions {
+  allowedHostnames?: readonly string[];
+  endpoints?: readonly string[];
+  expectedAction?: string;
+  secretKey: string;
+}
+
+interface AuthRuntimeOptions {
   database: D1Database;
+  onSecurityEvent?: AuthSecurityEventListener;
   sendVerificationOTP(email: AuthEmail): Promise<void>;
   sessionExpiresIn?: number;
   sessionUpdateAge?: number;
   waitUntil(task: Promise<void>): void;
 }
 
-export type MultiUserAuthPolicyOptions = AuthPolicyConfiguration & AuthSecretOptions;
-
-export type MultiUserAuthOptions = MultiUserAuthPolicyOptions &
-  AuthRuntimeConfiguration & {
-    authorizeEmail(email: string): boolean | Promise<boolean>;
-  };
-
-export type OwnerAuthPolicyOptions = AuthPolicyConfiguration &
-  AuthSecretOptions & {
-    ownerEmail: string;
-  };
-
-export type OwnerAuthOptions = OwnerAuthPolicyOptions & AuthRuntimeConfiguration;
-
 export interface AuthPolicy {
+  /** Compatibility alias for `origin`. */
   applicationOrigin: string;
+  /** Compatibility alias for `baseURL`. */
   authServerOrigin: string;
   basePath: string;
+  baseURL: string;
   cookiePrefix: string;
   emailOtpRateLimit: AuthEmailOtpRateLimit;
+  origin: string;
   relyingPartyId: string;
   secureCookies: boolean;
+  tableNames: AuthTableNames;
 }
+
+export interface AuthSessionIdentity {
+  authenticatedAt?: string;
+  email: string;
+  expiresAt?: string;
+  sessionId?: string;
+  userId: string;
+}
+
+export interface ResolvedAuthSessionIdentity extends AuthSessionIdentity {
+  authenticatedAt: string;
+  expiresAt: string;
+  sessionId: string;
+}
+
+/** One stored session row, safe to render in a "your devices" UI. Never includes the session token. */
+export interface AuthSessionSummary {
+  createdAt: string;
+  expiresAt: string;
+  id: string;
+  ipAddress: string | null;
+  updatedAt: string;
+  userAgent: string | null;
+}
+
+interface StoredAuthSessionSummary {
+  createdAt: number;
+  expiresAt: number;
+  id: string;
+  ipAddress: string | null;
+  updatedAt: number;
+  userAgent: string | null;
+}
+
+interface AuthInstance<TPolicy extends AuthPolicy> {
+  /** Revokes every session for `userId` immediately and reports an `emergency_lockout` event. Returns the count revoked. */
+  emergencyLockout(userId: string): Promise<number>;
+  handler(request: Request): Promise<Response>;
+  /** Lists `userId`'s active sessions, newest first. */
+  listSessions(userId: string): Promise<AuthSessionSummary[]>;
+  policy: TPolicy;
+  /** Deletes expired rate-limit counters. Call from consumer-owned scheduled maintenance. */
+  pruneRateLimits(options?: { now?: number; retentionSeconds?: number }): Promise<number>;
+  resolveSession(headers: Headers): Promise<ResolvedAuthSessionIdentity | null>;
+  /** Revokes every session for `userId`. Returns the count revoked. */
+  revokeAllSessions(userId: string): Promise<number>;
+  /** Revokes one session owned by `userId`. Returns `false` if no matching session existed. */
+  revokeSession(userId: string, sessionId: string): Promise<boolean>;
+}
+
+export type MultiUserAuthPolicyOptions = BaseAuthPolicyOptions;
+export type MultiUserAuthOptions = BaseAuthPolicyOptions &
+  AuthRuntimeOptions & { authorizeEmail(email: string): boolean | Promise<boolean> };
+
+export type MultiUserAuthInstance = AuthInstance<AuthPolicy>;
+
+export type OwnerAuthPolicyOptions = BaseAuthPolicyOptions & { ownerEmail: string };
+
+export type OwnerAuthOptions = OwnerAuthPolicyOptions & AuthRuntimeOptions;
 
 export interface OwnerAuthPolicy extends AuthPolicy {
   ownerEmail: string;
 }
 
-export interface AuthSessionIdentity {
-  email: string;
-  userId: string;
-}
-
-interface AuthInstance<TPolicy extends AuthPolicy> {
-  handler(request: Request): Promise<Response>;
-  policy: TPolicy;
-  resolveSession(headers: Headers): Promise<AuthSessionIdentity | null>;
-}
-
-export type MultiUserAuthInstance = AuthInstance<AuthPolicy>;
+export type OwnerAuthEmail = AuthEmail;
 export type OwnerAuthInstance = AuthInstance<OwnerAuthPolicy>;
 export type OwnerAuthSessionIdentity = AuthSessionIdentity;
 
@@ -126,6 +251,16 @@ function deferLifecycleTask(task: () => Promise<void>): Promise<void> {
   }).then(task);
 }
 
+function rateLimitedResponse(): Response {
+  return Response.json(
+    { code: "request_rate_limited", message: "request_rate_limited" },
+    {
+      headers: { "Cache-Control": "no-store", "Retry-After": String(PRE_AUTH_RATE_LIMIT_WINDOW_SECONDS) },
+      status: 429,
+    },
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -148,17 +283,7 @@ function normalizeCookiePrefix(value: string): string {
 
 export function normalizeAuthEmail(value: string): string {
   const email = value.trim().toLowerCase();
-  const atIndex = email.indexOf("@");
-  const domain = email.slice(atIndex + 1);
-  const dotIndex = domain.indexOf(".");
-  const isValid =
-    email.length <= MAX_EMAIL_LENGTH &&
-    atIndex > 0 &&
-    atIndex === email.lastIndexOf("@") &&
-    dotIndex > 0 &&
-    dotIndex < domain.length - 1 &&
-    !/\s/u.test(email);
-  if (!isValid) throw new Error("owner_auth_email_invalid");
+  if (email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email)) throw new Error("owner_auth_email_invalid");
   return email;
 }
 
@@ -179,6 +304,84 @@ function resolveEmailOtpRateLimit(value: AuthEmailOtpRateLimit | undefined): Aut
   };
 }
 
+function validateSecret(value: string | undefined): void {
+  if (value === undefined || value.trim().length < 32) throw new Error("owner_auth_secret_invalid");
+}
+
+interface RuntimeSecretOptions {
+  legacySecret?: string;
+  secret?: string;
+  secrets?: AuthVersionedSecret[];
+}
+
+function hasConflictingSecretOptions(options: RuntimeSecretOptions): boolean {
+  const usesVersionedSecrets = options.secrets !== undefined;
+  return (
+    (usesVersionedSecrets && options.secret !== undefined) ||
+    (!usesVersionedSecrets && options.legacySecret !== undefined)
+  );
+}
+
+function validateSecrets(options: RuntimeSecretOptions): void {
+  if (hasConflictingSecretOptions(options)) {
+    throw new Error("owner_auth_secret_options_conflict");
+  }
+  if (options.secrets === undefined) {
+    validateSecret(options.secret);
+    return;
+  }
+  if (options.secrets.length === 0) throw new Error("owner_auth_secrets_invalid");
+  const versions = new Set<number>();
+  for (const secret of options.secrets) {
+    if (!Number.isSafeInteger(secret.version) || secret.version < 0 || versions.has(secret.version)) {
+      throw new Error("owner_auth_secrets_invalid");
+    }
+    validateSecret(secret.value);
+    versions.add(secret.version);
+  }
+  if (options.legacySecret !== undefined) validateSecret(options.legacySecret);
+}
+
+function requireDate(value: Date | number | string, code: string): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error(code);
+  return date.toISOString();
+}
+
+/** Returns whether a session is recent enough for a consumer-defined step-up boundary. */
+export function isRecentAuthentication(
+  identity: { authenticatedAt: string },
+  maxAgeSeconds: number,
+  now: number = Date.now(),
+): boolean {
+  if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds <= 0) {
+    throw new Error("auth_step_up_max_age_invalid");
+  }
+  if (!Number.isFinite(now)) throw new Error("auth_step_up_now_invalid");
+  const authenticatedAt = new Date(identity.authenticatedAt).getTime();
+  return Number.isFinite(authenticatedAt) && authenticatedAt <= now && now - authenticatedAt <= maxAgeSeconds * 1000;
+}
+
+function resolveTurnstileOptions(options: AuthTurnstileOptions, policy: AuthPolicy) {
+  const secretKey = options.secretKey.trim();
+  if (secretKey.length < 20) throw new Error("auth_turnstile_secret_invalid");
+  const endpoints = [...(options.endpoints ?? ["/email-otp/send-verification-otp"])];
+  if (endpoints.length === 0 || endpoints.some((endpoint) => !/^\/[A-Za-z0-9/*_-]+$/u.test(endpoint))) {
+    throw new Error("auth_turnstile_endpoint_invalid");
+  }
+  const allowedHostnames = [...(options.allowedHostnames ?? [new URL(policy.origin).hostname])];
+  if (allowedHostnames.length === 0 || allowedHostnames.some((hostname) => hostname !== hostname.toLowerCase())) {
+    throw new Error("auth_turnstile_hostname_invalid");
+  }
+  return {
+    allowedHostnames,
+    endpoints,
+    ...(options.expectedAction ? { expectedAction: options.expectedAction } : {}),
+    provider: "cloudflare-turnstile" as const,
+    secretKey,
+  };
+}
+
 function resolveOrigin(value: string): URL {
   let url: URL;
   try {
@@ -195,56 +398,42 @@ function resolveOrigin(value: string): URL {
   return url;
 }
 
-function assertSameSite(applicationOrigin: URL, authServerOrigin: URL): void {
-  const sameProtocol = applicationOrigin.protocol === authServerOrigin.protocol;
-  const sameHost = applicationOrigin.hostname === authServerOrigin.hostname;
-  const authServerIsApplicationSubdomain = authServerOrigin.hostname.endsWith(`.${applicationOrigin.hostname}`);
-  if (!sameProtocol || (!sameHost && !authServerIsApplicationSubdomain)) {
-    throw new Error("owner_auth_origins_not_same_site");
-  }
+function resolveOriginAlias(preferred: string | undefined, legacy: string | undefined): string | undefined {
+  if (preferred && legacy && preferred !== legacy) throw new Error("owner_auth_origin_alias_conflict");
+  return preferred ?? legacy;
 }
 
-function validateSecret(value: string | undefined): void {
-  if (value === undefined || value.trim().length < 32) throw new Error("owner_auth_secret_invalid");
+function resolveConfiguredOrigins(options: {
+  applicationOrigin?: string;
+  authServerURL?: string;
+  baseURL?: string;
+  browserOrigin?: string;
+}): { baseURL: URL; browserOrigin: URL } {
+  const baseURLValue = resolveOriginAlias(options.baseURL, options.authServerURL);
+  if (!baseURLValue) throw new Error("owner_auth_origin_invalid");
+  const browserOriginValue = resolveOriginAlias(options.browserOrigin, options.applicationOrigin) ?? baseURLValue;
+  return {
+    baseURL: resolveOrigin(baseURLValue),
+    browserOrigin: resolveOrigin(browserOriginValue),
+  };
 }
 
-function validateSecrets(options: {
-  legacySecret?: string;
-  secret?: string;
-  secrets?: OwnerAuthVersionedSecret[];
-}): void {
-  if (options.secrets === undefined) {
-    validateSecret(options.secret);
-    return;
-  }
-
-  if (options.secret !== undefined || options.secrets.length === 0) throw new Error("owner_auth_secrets_invalid");
-  const versions = new Set<number>();
-  for (const secret of options.secrets) {
-    if (!Number.isSafeInteger(secret.version) || secret.version < 0 || versions.has(secret.version)) {
-      throw new Error("owner_auth_secrets_invalid");
-    }
-    validateSecret(secret.value);
-    versions.add(secret.version);
-  }
-  if (options.legacySecret !== undefined) validateSecret(options.legacySecret);
-}
-
-function resolveAuthPolicy(options: MultiUserAuthPolicyOptions): AuthPolicy {
+function resolveAuthPolicy(options: BaseAuthPolicyOptions): AuthPolicy {
   if (!options.appName.trim()) throw new Error("owner_auth_app_name_invalid");
   validateSecrets(options);
-  const applicationOrigin = resolveOrigin(options.applicationOrigin);
-  const authServerOrigin = resolveOrigin(options.authServerURL);
-  assertSameSite(applicationOrigin, authServerOrigin);
+  const { baseURL, browserOrigin } = resolveConfiguredOrigins(options);
 
   return {
-    applicationOrigin: applicationOrigin.origin,
-    authServerOrigin: authServerOrigin.origin,
+    applicationOrigin: browserOrigin.origin,
+    authServerOrigin: baseURL.origin,
     basePath: normalizeBasePath(options.basePath),
+    baseURL: baseURL.origin,
     cookiePrefix: normalizeCookiePrefix(options.cookiePrefix),
     emailOtpRateLimit: resolveEmailOtpRateLimit(options.emailOtpRateLimit),
-    relyingPartyId: applicationOrigin.hostname,
-    secureCookies: authServerOrigin.protocol === "https:",
+    origin: browserOrigin.origin,
+    relyingPartyId: browserOrigin.hostname,
+    secureCookies: baseURL.protocol === "https:",
+    tableNames: resolveAuthTableNames(options.tablePrefix),
   };
 }
 
@@ -259,19 +448,46 @@ export function resolveOwnerAuthPolicy(options: OwnerAuthPolicyOptions): OwnerAu
   };
 }
 
+async function requestEmail(request: Request): Promise<string | null> {
+  const contentType = request.headers.get("Content-Type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) return null;
+  const body: unknown = await request
+    .clone()
+    .json()
+    .catch(() => null);
+  if (!isRecord(body) || typeof body.email !== "string") return null;
+  try {
+    return normalizeAuthEmail(body.email);
+  } catch {
+    return "";
+  }
+}
+
+async function emitSecurityEvent(
+  listener: AuthSecurityEventListener | undefined,
+  event: AuthSecurityEvent,
+): Promise<void> {
+  if (!listener) return;
+  try {
+    await listener(event);
+  } catch {
+    // Consumer observability hooks must never break the authentication flow.
+  }
+}
+
 function corsHeaders(policy: AuthPolicy): Headers {
   return new Headers({
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Origin": policy.applicationOrigin,
+    "Access-Control-Allow-Origin": policy.origin,
     Vary: "Origin",
   });
 }
 
 function withCors(policy: AuthPolicy, request: Request, response: Response): Response {
-  if (request.headers.get("Origin") !== policy.applicationOrigin) return response;
+  if (request.headers.get("Origin") !== policy.origin) return response;
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Credentials", "true");
-  headers.set("Access-Control-Allow-Origin", policy.applicationOrigin);
+  headers.set("Access-Control-Allow-Origin", policy.origin);
   const vary = headers.get("Vary");
   if (vary === null) headers.set("Vary", "Origin");
   else if (
@@ -305,56 +521,119 @@ function preflightResponse(policy: AuthPolicy, request: Request): Response {
   return new Response(null, { headers, status: 204 });
 }
 
-async function requestEmail(request: Request): Promise<string | null> {
-  const contentType = request.headers.get("Content-Type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) return null;
-  const body: unknown = await request
-    .clone()
-    .json()
-    .catch(() => null);
-  if (!isRecord(body) || typeof body.email !== "string") return null;
-  try {
-    return normalizeAuthEmail(body.email);
-  } catch {
-    return "";
-  }
+async function enforceRequestBoundary(
+  policy: AuthPolicy,
+  request: Request,
+  path: string,
+  emit: AuthSecurityEventListener | undefined,
+): Promise<Response | null> {
+  const method = request.method.toUpperCase();
+  const url = new URL(request.url);
+  const origin = request.headers.get("Origin");
+  const rejected =
+    url.origin !== policy.baseURL ||
+    (origin !== null && origin !== policy.origin) ||
+    (!SAFE_METHODS.has(method) && origin !== policy.origin);
+  if (!rejected && method === "OPTIONS") {
+    if (origin === policy.origin) return preflightResponse(policy, request);
+  } else if (!rejected) return null;
+  await emitSecurityEvent(emit, {
+    origin,
+    path,
+    type: "request_origin_rejected",
+  });
+  return errorResponse(403, "request_origin_not_allowed");
 }
 
-function enforceRequestBoundary(policy: AuthPolicy, request: Request, url: URL, method: string): Response | undefined {
-  const origin = request.headers.get("Origin");
-  if (url.origin !== policy.authServerOrigin || (origin !== null && origin !== policy.applicationOrigin)) {
-    return errorResponse(403, "request_origin_not_allowed");
+async function rejectUnauthorizedEmail(
+  policy: AuthPolicy,
+  path: string,
+  email: string,
+  invalidCredentialsCode: string,
+  emit: AuthSecurityEventListener | undefined,
+): Promise<Response> {
+  if (path === `${policy.basePath}/email-otp/send-verification-otp`) {
+    if (email) await emitSecurityEvent(emit, { email, type: "email_otp_delivery_suppressed" });
+    return genericEmailResponse();
   }
-  if (method === "OPTIONS") {
-    if (origin !== policy.applicationOrigin) return errorResponse(403, "request_origin_not_allowed");
-    return preflightResponse(policy, request);
-  }
-  if (!SAFE_METHODS.has(method) && origin !== policy.applicationOrigin) {
-    return errorResponse(403, "request_origin_not_allowed");
-  }
-  return undefined;
+  if (email) await emitSecurityEvent(emit, { email, path, type: "credentials_rejected" });
+  return errorResponse(401, invalidCredentialsCode);
+}
+
+function clientIp(request: Request): string {
+  return request.headers.get("cf-connecting-ip")?.trim() || NO_TRUSTED_IP_KEY;
+}
+
+/**
+ * Atomically increments (or starts) a fixed-window counter in one statement: SQLite evaluates
+ * the `ON CONFLICT` update as part of the same atomic operation as the insert attempt, so
+ * concurrent callers for the same key are serialized by the database rather than racing on a
+ * separate read-then-write pair. Returns the resulting count for this window.
+ */
+async function consumePreAuthRateLimitCount(
+  database: D1Database,
+  rateLimitTable: string,
+  key: string,
+): Promise<number> {
+  const now = Date.now();
+  const windowStart = now - PRE_AUTH_RATE_LIMIT_WINDOW_SECONDS * 1000;
+  const row = await database
+    .prepare(
+      `INSERT INTO "${rateLimitTable}" ("id", "key", "count", "lastRequest")
+       VALUES (?1, ?2, 1, ?3)
+       ON CONFLICT("key") DO UPDATE SET
+         "count" = CASE WHEN "lastRequest" <= ?4 THEN 1 ELSE "count" + 1 END,
+         "lastRequest" = CASE WHEN "lastRequest" <= ?4 THEN ?3 ELSE "lastRequest" END
+       RETURNING "count"`,
+    )
+    .bind(crypto.randomUUID(), key, now, windowStart)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function enforcePreAuthRateLimit(
+  policy: AuthPolicy,
+  database: D1Database,
+  request: Request,
+  path: string,
+  emit: AuthSecurityEventListener | undefined,
+): Promise<Response | null> {
+  const key = `pre-auth:${clientIp(request)}:${path}`;
+  const count = await consumePreAuthRateLimitCount(database, policy.tableNames.rateLimit, key);
+  if (count <= PRE_AUTH_RATE_LIMIT_MAX) return null;
+  await emitSecurityEvent(emit, { path, type: "request_rate_limited" });
+  return rateLimitedResponse();
 }
 
 async function enforceAuthRequest(
   policy: AuthPolicy,
   authorizeEmail: (email: string) => boolean | Promise<boolean>,
-  invalidCredentialsCode: string | undefined,
+  invalidCredentialsCode: string,
   request: Request,
+  emit?: AuthSecurityEventListener,
+  database?: D1Database,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith(`${policy.basePath}/`) && url.pathname !== policy.basePath) return null;
 
-  const method = request.method.toUpperCase();
-  const boundaryResponse = enforceRequestBoundary(policy, request, url, method);
-  if (boundaryResponse) return boundaryResponse;
+  const originRejection = await enforceRequestBoundary(policy, request, url.pathname, emit);
+  if (originRejection) return originRejection;
 
-  if (method !== "POST" || invalidCredentialsCode === undefined) return null;
-  if (url.pathname === `${policy.basePath}/email-otp/send-verification-otp`) {
-    return null;
+  if (request.method.toUpperCase() !== "POST") return null;
+
+  // Better Auth's own rate limiter lives inside auth.handler and never runs for a request
+  // rejected here, so a request that will be rejected below for an unauthorized email must
+  // still be bounded — otherwise authorizeEmail (a D1 lookup for multi-user consumers) could
+  // be invoked without limit. Requests that pass through to auth.handler remain additionally
+  // bounded by Better Auth's own configured rate limit.
+  if (database) {
+    const rateLimitRejection = await enforcePreAuthRateLimit(policy, database, request, url.pathname, emit);
+    if (rateLimitRejection) return rateLimitRejection;
   }
+
   const email = await requestEmail(request);
   if (email === null || (email !== "" && (await authorizeEmail(email)))) return null;
-  return errorResponse(401, invalidCredentialsCode);
+  return rejectUnauthorizedEmail(policy, url.pathname, email, invalidCredentialsCode, emit);
 }
 
 export function enforceOwnerAuthRequest(policy: OwnerAuthPolicy, request: Request): Promise<Response | null> {
@@ -382,32 +661,98 @@ function isSessionIndependentRequest(policy: AuthPolicy, request: Request): bool
 
 async function authorizeUserId(
   database: D1Database,
+  userTable: string,
   userId: string,
   authorizeEmail: (email: string) => boolean | Promise<boolean>,
 ): Promise<boolean> {
-  const user = await database.prepare("SELECT email FROM user WHERE id = ?").bind(userId).first<{ email: string }>();
+  const user = await database
+    .prepare(`SELECT "email" FROM "${userTable}" WHERE "id" = ?`)
+    .bind(userId)
+    .first<{ email: string }>();
   return user !== null && authorizeEmail(normalizeAuthEmail(user.email));
 }
 
 async function authorizePasskeyCredential(
   database: D1Database,
+  passkeyTable: string,
+  userTable: string,
   credentialId: string,
   authorizeEmail: (email: string) => boolean | Promise<boolean>,
 ): Promise<boolean> {
   const user = await database
     .prepare(
-      "SELECT user.email FROM passkey INNER JOIN user ON user.id = passkey.userId WHERE passkey.credentialID = ?",
+      `SELECT u."email" AS "email" FROM "${passkeyTable}" p INNER JOIN "${userTable}" u ON u."id" = p."userId" WHERE p."credentialID" = ?`,
     )
     .bind(credentialId)
     .first<{ email: string }>();
   return user !== null && authorizeEmail(normalizeAuthEmail(user.email));
 }
 
+async function listAuthSessionsForUser(
+  database: D1Database,
+  sessionTable: string,
+  userId: string,
+): Promise<AuthSessionSummary[]> {
+  const result = await database
+    .prepare(
+      `SELECT "id", "createdAt", "updatedAt", "expiresAt", "ipAddress", "userAgent" FROM "${sessionTable}" WHERE "userId" = ? AND "expiresAt" > ? ORDER BY "createdAt" DESC`,
+    )
+    .bind(userId, Date.now())
+    .all<StoredAuthSessionSummary>();
+  return result.results.map((session) => ({
+    createdAt: new Date(session.createdAt).toISOString(),
+    expiresAt: new Date(session.expiresAt).toISOString(),
+    id: session.id,
+    ipAddress: session.ipAddress,
+    updatedAt: new Date(session.updatedAt).toISOString(),
+    userAgent: session.userAgent,
+  }));
+}
+
+async function revokeAuthSessionForUser(
+  database: D1Database,
+  sessionTable: string,
+  userId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const result = await database
+    .prepare(`DELETE FROM "${sessionTable}" WHERE "userId" = ? AND "id" = ?`)
+    .bind(userId, sessionId)
+    .run();
+  return result.meta.changes > 0;
+}
+
+async function revokeAllAuthSessionsForUser(
+  database: D1Database,
+  sessionTable: string,
+  userId: string,
+): Promise<number> {
+  const result = await database.prepare(`DELETE FROM "${sessionTable}" WHERE "userId" = ?`).bind(userId).run();
+  return result.meta.changes;
+}
+
+async function pruneAuthRateLimits(
+  database: D1Database,
+  rateLimitTable: string,
+  options: { now?: number; retentionSeconds?: number } = {},
+): Promise<number> {
+  const now = options.now ?? Date.now();
+  const retentionSeconds = options.retentionSeconds ?? DEFAULT_RATE_LIMIT_RETENTION_SECONDS;
+  if (!Number.isFinite(now) || !Number.isSafeInteger(retentionSeconds) || retentionSeconds <= 0) {
+    throw new Error("auth_rate_limit_retention_invalid");
+  }
+  const result = await database
+    .prepare(`DELETE FROM "${rateLimitTable}" WHERE "lastRequest" <= ?`)
+    .bind(now - retentionSeconds * 1000)
+    .run();
+  return result.meta.changes;
+}
+
 function createConfiguredAuth<TPolicy extends AuthPolicy>(
-  options: MultiUserAuthPolicyOptions & AuthRuntimeConfiguration,
+  options: BaseAuthPolicyOptions & AuthRuntimeOptions,
   policy: TPolicy,
   authorizeEmail: (email: string) => boolean | Promise<boolean>,
-  invalidCredentialsCode?: string,
+  invalidCredentialsCode: string,
 ): AuthInstance<TPolicy> {
   const sessionExpiresIn = positiveInteger(
     options.sessionExpiresIn,
@@ -420,6 +765,8 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
     "owner_auth_session_update_age_invalid",
   );
 
+  const turnstile = options.turnstile ? resolveTurnstileOptions(options.turnstile, policy) : null;
+
   const auth = betterAuth({
     advanced: {
       cookiePrefix: policy.cookiePrefix,
@@ -428,15 +775,22 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
     },
     appName: options.appName.trim(),
     basePath: policy.basePath,
-    baseURL: policy.authServerOrigin,
+    baseURL: policy.baseURL,
     database: options.database,
     databaseHooks: {
       session: {
         create: {
           before: async (session) => {
-            if (!(await authorizeUserId(options.database, session.userId, authorizeEmail))) {
-              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode ?? "invalid_credentials" });
+            if (!(await authorizeUserId(options.database, policy.tableNames.user, session.userId, authorizeEmail))) {
+              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode });
             }
+          },
+          after: async (session) => {
+            await emitSecurityEvent(options.onSecurityEvent, {
+              sessionId: session.id,
+              type: "session_created",
+              userId: session.userId,
+            });
           },
         },
       },
@@ -449,6 +803,7 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
         },
       },
     },
+    account: { modelName: policy.tableNames.account },
     emailAndPassword: { enabled: false },
     plugins: [
       emailOTP({
@@ -461,10 +816,18 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
           const deliver = async (): Promise<void> => {
             const normalizedEmail = normalizeAuthEmail(email);
             if (type !== "sign-in" || !(await authorizeEmail(normalizedEmail))) return;
-            await options.sendVerificationOTP({ email: normalizedEmail, otp });
+            await emitSecurityEvent(options.onSecurityEvent, { email: normalizedEmail, type: "email_otp_requested" });
+            try {
+              await options.sendVerificationOTP({ email: normalizedEmail, otp });
+            } catch {
+              await emitSecurityEvent(options.onSecurityEvent, {
+                email: normalizedEmail,
+                type: "email_otp_delivery_failed",
+              });
+            }
           };
-          const deliveryTask = deferLifecycleTask(deliver);
-          options.waitUntil(deliveryTask);
+          const task = deferLifecycleTask(deliver);
+          options.waitUntil(task);
           return Promise.resolve();
         },
         storeOTP: "hashed",
@@ -472,37 +835,86 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
       passkey({
         advanced: { webAuthnChallengeCookie: `${policy.cookiePrefix}-passkey` },
         authentication: {
-          afterVerification: async ({ clientData }) => {
-            if (!(await authorizePasskeyCredential(options.database, clientData.id, authorizeEmail))) {
-              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode ?? "invalid_credentials" });
+          afterVerification: async ({ clientData, verification }) => {
+            if (!isPasskeyAuthenticationUserVerified(verification)) {
+              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode });
+            }
+            if (
+              !(await authorizePasskeyCredential(
+                options.database,
+                policy.tableNames.passkey,
+                policy.tableNames.user,
+                clientData.id,
+                authorizeEmail,
+              ))
+            ) {
+              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode });
             }
           },
         },
         authenticatorSelection: { residentKey: "required", userVerification: "required" },
-        origin: policy.applicationOrigin,
+        origin: policy.origin,
+        registration: {
+          afterVerification: ({ verification }) => {
+            if (!isPasskeyRegistrationUserVerified(verification)) {
+              throw new APIError("UNAUTHORIZED", { message: invalidCredentialsCode });
+            }
+          },
+        },
         rpID: policy.relyingPartyId,
         rpName: options.appName.trim(),
+        schema: { passkey: { modelName: policy.tableNames.passkey } },
       }),
+      ...(turnstile ? [captcha(turnstile)] : []),
     ],
     rateLimit: {
       enabled: true,
       max: 100,
-      modelName: "rateLimit",
+      modelName: policy.tableNames.rateLimit,
       storage: "database",
       window: 60,
     },
     secret: options.secrets === undefined ? options.secret : options.legacySecret,
     secrets: options.secrets,
+    ...(options.socialProviders ? { socialProviders: options.socialProviders } : {}),
     session: {
       expiresIn: sessionExpiresIn,
+      modelName: policy.tableNames.session,
       updateAge: sessionUpdateAge,
     },
-    trustedOrigins: [policy.applicationOrigin],
+    trustedOrigins: [policy.origin],
+    user: {
+      modelName: policy.tableNames.user,
+      validateUserInfo: async ({ source, user }) => {
+        if (typeof user.email !== "string") return { error: invalidCredentialsCode };
+        const email = normalizeAuthEmail(user.email);
+        if (await authorizeEmail(email)) return;
+        await emitSecurityEvent(options.onSecurityEvent, {
+          email,
+          path: source.method,
+          type: "credentials_rejected",
+        });
+        return { error: invalidCredentialsCode };
+      },
+    },
+    verification: { modelName: policy.tableNames.verification },
   });
 
   return {
+    emergencyLockout: async (userId: string): Promise<number> => {
+      const revokedSessions = await revokeAllAuthSessionsForUser(options.database, policy.tableNames.session, userId);
+      await emitSecurityEvent(options.onSecurityEvent, { revokedSessions, type: "emergency_lockout", userId });
+      return revokedSessions;
+    },
     handler: async (request: Request): Promise<Response> => {
-      const rejection = await enforceAuthRequest(policy, authorizeEmail, invalidCredentialsCode, request);
+      const rejection = await enforceAuthRequest(
+        policy,
+        authorizeEmail,
+        invalidCredentialsCode,
+        request,
+        options.onSecurityEvent,
+        options.database,
+      );
       if (rejection) return withCors(policy, request, rejection);
       const currentSession = await auth.api.getSession({
         headers: request.headers,
@@ -513,13 +925,16 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
         !(await authorizeEmail(normalizeAuthEmail(currentSession.user.email))) &&
         !isSessionIndependentRequest(policy, request)
       ) {
-        return withCors(policy, request, errorResponse(401, invalidCredentialsCode ?? "invalid_credentials"));
+        return withCors(policy, request, errorResponse(401, invalidCredentialsCode));
       }
       const response = await auth.handler(request);
       return withCors(policy, request, isEmailOtpSendRequest(policy, request) ? genericEmailResponse() : response);
     },
+    listSessions: (userId: string): Promise<AuthSessionSummary[]> =>
+      listAuthSessionsForUser(options.database, policy.tableNames.session, userId),
     policy,
-    resolveSession: async (headers: Headers): Promise<AuthSessionIdentity | null> => {
+    pruneRateLimits: (pruneOptions) => pruneAuthRateLimits(options.database, policy.tableNames.rateLimit, pruneOptions),
+    resolveSession: async (headers: Headers): Promise<ResolvedAuthSessionIdentity | null> => {
       const session = await auth.api.getSession({
         headers,
         query: { disableCookieCache: true, disableRefresh: true },
@@ -527,14 +942,34 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
       if (!session) return null;
       const email = normalizeAuthEmail(session.user.email);
       if (!(await authorizeEmail(email))) return null;
-      return { email, userId: session.user.id };
+      return {
+        authenticatedAt: requireDate(session.session.createdAt, "auth_session_created_at_invalid"),
+        email,
+        expiresAt: requireDate(session.session.expiresAt, "auth_session_expires_at_invalid"),
+        sessionId: session.session.id,
+        userId: session.user.id,
+      };
+    },
+    revokeAllSessions: async (userId: string): Promise<number> => {
+      const revokedSessions = await revokeAllAuthSessionsForUser(options.database, policy.tableNames.session, userId);
+      if (revokedSessions > 0) {
+        await emitSecurityEvent(options.onSecurityEvent, { revokedSessions, type: "sessions_revoked_all", userId });
+      }
+      return revokedSessions;
+    },
+    revokeSession: async (userId: string, sessionId: string): Promise<boolean> => {
+      const revoked = await revokeAuthSessionForUser(options.database, policy.tableNames.session, userId, sessionId);
+      if (revoked) {
+        await emitSecurityEvent(options.onSecurityEvent, { sessionId, type: "session_revoked", userId });
+      }
+      return revoked;
     },
   };
 }
 
 export function createMultiUserAuth(options: MultiUserAuthOptions): MultiUserAuthInstance {
-  const policy = resolveMultiUserAuthPolicy(options);
-  return createConfiguredAuth(options, policy, (email) => options.authorizeEmail(email));
+  const policy = resolveAuthPolicy(options);
+  return createConfiguredAuth(options, policy, (email) => options.authorizeEmail(email), "invalid_credentials");
 }
 
 export function createOwnerAuth(options: OwnerAuthOptions): OwnerAuthInstance {

@@ -1,9 +1,10 @@
-name: Release package
+name: Release packages
 
 on:
   pull_request:
     branches: [main]
     types: [closed]
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -18,11 +19,17 @@ jobs:
     name: Verify and publish
     if: >-
       ${{
-        github.event.pull_request.merged == true &&
-        startsWith(github.event.pull_request.head.ref, 'release/v')
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/main'
+        ) ||
+        (
+          github.event.pull_request.merged == true &&
+          startsWith(github.event.pull_request.head.ref, 'release/v')
+        )
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25
     environment: production
     steps:
       - name: Check out merged main
@@ -30,7 +37,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || 'main' }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
@@ -43,176 +50,13 @@ jobs:
           node-version: 22.23.1
           registry-url: https://registry.npmjs.org
 
-      - name: Install an OIDC-capable npm CLI
-        run: npm install --global npm@12.1.0
-
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @santi020k/auth-website exec playwright install --with-deps chromium
       - run: pnpm verify
-      - run: pnpm release:pack
 
-      - id: release
-        name: Validate release metadata
-        shell: bash
-        env:
-          RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          set -euo pipefail
-
-          package_name=$(node -p "require('./packages/auth-cloudflare/package.json').name")
-          version=$(node -p "require('./packages/auth-cloudflare/package.json').version")
-          private_package=$(node -p "Boolean(require('./packages/auth-cloudflare/package.json').private)")
-          publish_access=$(node -p "require('./packages/auth-cloudflare/package.json').publishConfig?.access ?? ''")
-          expected_branch="release/v${version}"
-          pack_destination="$RUNNER_TEMP/auth-package"
-          pack_metadata="$RUNNER_TEMP/auth-package-pack.json"
-
-          set_output() {
-            printf '%s\n' "$1" >> "$GITHUB_OUTPUT"
-          }
-
-          if [[ "$private_package" == "true" ]]; then
-            echo "::error::The package manifest is still marked private."
-            exit 1
-          fi
-
-          if [[ "$publish_access" != "public" ]]; then
-            echo "::error::The scoped package must publish with public access."
-            exit 1
-          fi
-
-          if [[ "$RELEASE_BRANCH" != "$expected_branch" ]]; then
-            echo "::error::Expected release branch $expected_branch, received $RELEASE_BRANCH."
-            exit 1
-          fi
-
-          if npm view "$package_name" name >/dev/null 2>&1; then
-            set_output "package_exists=true"
-            set_output "initial_publish=false"
-          else
-            set_output "package_exists=false"
-            set_output "initial_publish=true"
-          fi
-
-          mkdir -p "$pack_destination"
-          pnpm --dir packages/auth-cloudflare pack \
-            --pack-destination "$pack_destination" \
-            --json > "$pack_metadata"
-          package_tarball=$(node -p \
-            "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).filename" \
-            "$pack_metadata")
-          local_integrity=$(node -e \
-            "const { createHash } = require('node:crypto'); const { readFileSync } = require('node:fs'); process.stdout.write('sha512-' + createHash('sha512').update(readFileSync(process.argv[1])).digest('base64'));" \
-            "$package_tarball")
-
-          if npm view "$package_name@$version" version >/dev/null 2>&1; then
-            published_integrity=$(npm view "$package_name@$version" dist.integrity)
-            if [[ -z "$local_integrity" || "$published_integrity" != "$local_integrity" ]]; then
-              echo "::error::$package_name@$version exists on npm, but its integrity does not match the package built from this commit. Refusing to create source tags or a GitHub Release."
-              exit 1
-            fi
-
-            set_output "publish=false"
-          else
-            set_output "publish=true"
-          fi
-
-          set_output "name=$package_name"
-          set_output "version=$version"
-          set_output "integrity=$local_integrity"
-          set_output "tarball=$package_tarball"
-
-      - name: Publish package
-        if: steps.release.outputs.publish == 'true'
-        env:
-          # npm cannot attach a trusted publisher before the package exists. The
-          # production environment supplies this secret for the initial release
-          # only; subsequent releases use GitHub OIDC with an empty value here.
-          NODE_AUTH_TOKEN: ${{ steps.release.outputs.initial_publish == 'true' && secrets.NPM_TOKEN || '' }}
-          PACKAGE_TARBALL: ${{ steps.release.outputs.tarball }}
-        run: |
-          set -euo pipefail
-          if [[ "${{ steps.release.outputs.initial_publish }}" == "true" && -z "$NODE_AUTH_TOKEN" ]]; then
-            echo "::error::The initial npm publication requires the production NPM_TOKEN secret."
-            exit 1
-          fi
-          npm publish "$PACKAGE_TARBALL" --access public
-
-      - name: Verify npm publication
-        shell: bash
-        env:
-          PACKAGE_NAME: ${{ steps.release.outputs.name }}
-          VERSION: ${{ steps.release.outputs.version }}
-          EXPECTED_INTEGRITY: ${{ steps.release.outputs.integrity }}
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 45); do
-            published=$(npm view "$PACKAGE_NAME@$VERSION" version 2>/dev/null || true)
-            if [[ "$published" == "$VERSION" ]]; then
-              published_integrity=$(npm view "$PACKAGE_NAME@$VERSION" dist.integrity)
-              test "$published_integrity" = "$EXPECTED_INTEGRITY"
-              exit 0
-            fi
-            echo "Waiting for npm security scanning to expose $PACKAGE_NAME@$VERSION (attempt $attempt/45)."
-            sleep 20
-          done
-          echo "::error::$PACKAGE_NAME@$VERSION was not readable from npm after 15 minutes."
-          exit 1
-
-      - name: Load production website deployment secrets
-        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
-        with:
-          method: oidc
-          identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
-          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
-          env-slug: prod
-          secret-path: /github/deploy-website
-
-      - name: Deploy documentation website
-        run: pnpm --filter @santi020k/auth-website run deploy
-
-      - name: Verify documentation website
-        run: curl --fail --retry 6 --retry-delay 10 --retry-all-errors https://auth.santi020k.com/
-
-      - name: Create immutable version tags and GitHub Release
+      - name: Validate, publish, verify, and tag every package in dependency order
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          PACKAGE_NAME: ${{ steps.release.outputs.name }}
-          VERSION: ${{ steps.release.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          release_commit=$(git rev-parse HEAD)
-          repository_tag="v${VERSION}"
-          package_tag="${PACKAGE_NAME}@${VERSION}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          for tag in "$repository_tag" "$package_tag"; do
-            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-              git fetch --quiet origin "refs/tags/${tag}:refs/tags/${tag}"
-              tag_commit=$(git rev-list -n 1 "$tag")
-              if [[ "$tag_commit" != "$release_commit" ]]; then
-                echo "::error::Tag $tag already points to $tag_commit, expected $release_commit."
-                exit 1
-              fi
-              echo "Tag $tag already points to the release commit."
-            else
-              git tag -a "$tag" -m "Release $tag"
-              git push origin "refs/tags/${tag}"
-            fi
-          done
-
-          if gh release view "$repository_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "GitHub Release $repository_tag already exists."
-          else
-            gh release create "$repository_tag" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "$repository_tag" \
-              --verify-tag \
-              --generate-notes
-          fi
-
-          echo "Published ${PACKAGE_NAME}@${VERSION} from ${release_commit}." >> "$GITHUB_STEP_SUMMARY"
+          RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: node scripts/release/publish.mjs

@@ -14,7 +14,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@santi020k/auth-client": "workspace:*",
     "@santi020k/auth-cloudflare": "workspace:*",
+    "@santi020k/auth-hono": "workspace:*",
     "hono": "catalog:"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 package:
   - changed-files:
-      - any-glob-to-any-file: "packages/auth-cloudflare/**"
+      - any-glob-to-any-file: "packages/*/**"
 
 website:
   - changed-files:

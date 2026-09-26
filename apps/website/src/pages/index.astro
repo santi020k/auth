@@ -3,22 +3,21 @@ import { Badge, ButtonLink, Card, CodeTabs } from "@santi020k/lumen-astro";
 
 import packageManifest from "../../../../packages/auth-cloudflare/package.json";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { homePage, homeStructuredData, siteDescription } from "../lib/seo";
 
-const description =
-  "Single-owner and multi-user email-code and passkey authentication for Hono applications on Cloudflare Workers and D1.";
 const npmPackageURL = "https://www.npmjs.com/package/@santi020k/auth-cloudflare";
 const packageVersion = packageManifest.version;
 const repositoryURL = "https://github.com/santi020k/auth";
 
 const installCommands = [
   {
-    code: "pnpm add @santi020k/auth-cloudflare hono",
+    code: "pnpm add @santi020k/auth-cloudflare better-auth @better-auth/passkey",
     label: "pnpm",
     language: "shell",
     value: "pnpm",
   },
   {
-    code: "npm install @santi020k/auth-cloudflare hono",
+    code: "npm install @santi020k/auth-cloudflare better-auth @better-auth/passkey",
     label: "npm",
     language: "shell",
     value: "npm",
@@ -27,50 +26,50 @@ const installCommands = [
 
 const integrationExamples = [
   {
-    code: `import { createOwnerAuth } from
-  "@santi020k/auth-cloudflare";
+    code: `const ownerAuth = createOwnerAuth({
+  appName: "Example owner workspace",
+  baseURL: env.AUTH_BASE_URL,
+  cookiePrefix: "example-owner",
+  database: env.AUTH_DB,
+  ownerEmail: env.OWNER_EMAIL,
+  secret: env.AUTH_SECRET,
+  sendVerificationOTP: ({ email, otp }) =>
+    sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
+});
 
-app.all("/api/auth/*", (context) => {
-  const ownerAuth = createOwnerAuth({
-    appName: "Example owner workspace",
-    applicationOrigin: context.env.APPLICATION_ORIGIN,
-    authServerURL: context.env.AUTH_SERVER_URL,
-    cookiePrefix: "example-owner",
-    database: context.env.AUTH_DB,
-    ownerEmail: context.env.OWNER_EMAIL,
-    secret: context.env.AUTH_SECRET,
-    sendVerificationOTP: ({ email, otp }) =>
-      sendLoginCode(context.env, email, otp),
-    waitUntil: (task) => {
-      context.executionCtx.waitUntil(task);
-    },
-  });
-  return ownerAuth.handler(context.req.raw);
-});`,
+app.all("/api/auth/*", (context) =>
+  ownerAuth.handler(context.req.raw),
+);`,
     label: "Worker",
     language: "typescript",
     value: "worker",
   },
   {
-    code: `import { createOwnerAuthClient } from
-  "@santi020k/auth-cloudflare/client";
-
-const authClient = createOwnerAuthClient({
-  authServerURL: env.PUBLIC_AUTH_SERVER_URL,
+    code: `const auth = createMultiUserAuth({
+  appName: "Example team workspace",
+  authorizeEmail: async (email) =>
+    Boolean(await findActiveMember(env.DB, email)),
+  baseURL: env.AUTH_BASE_URL,
+  cookiePrefix: "example-members",
+  database: env.AUTH_DB,
+  secret: env.AUTH_SECRET,
+  sendVerificationOTP: ({ email, otp }) =>
+    sendLoginCode(env, email, otp),
+  waitUntil: (task) => context.executionCtx.waitUntil(task),
 });`,
-    label: "Browser",
+    label: "Multi-user",
     language: "typescript",
-    value: "browser",
+    value: "multi-user",
   },
   {
-    code: `import { createOwnerAuthMiddleware } from
-  "@santi020k/auth-cloudflare/hono";
+    code: `const identity = await ownerAuth.resolveSession(
+  context.req.raw.headers,
+);
 
-app.use("/account/*",
-  createOwnerAuthMiddleware((context) =>
-    createOwnerAuthForContext(context),
-  ),
-);`,
+if (!identity) {
+  return context.json({ code: "unauthorized" }, 401);
+}`,
     label: "Protected route",
     language: "typescript",
     value: "protected-route",
@@ -78,14 +77,14 @@ app.use("/account/*",
 ] as const;
 
 const boundaries = [
-  ["Identity", "One owner or an application-owned member policy"],
+  ["Identity", "One owner or a consumer-approved member set"],
   ["Persistence", "A dedicated D1 database and app-owned migrations"],
   ["Browser", "Exact origin, cookie prefix, and WebAuthn relying-party ID"],
   ["Recovery", "A consumer-owned recovery policy and delivery provider"],
 ] as const;
 ---
 
-<BaseLayout description={description} title="santi020k auth">
+<BaseLayout page={homePage} structuredData={homeStructuredData}>
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero-copy">
       <div class="hero-meta" aria-label="Package status">
@@ -97,9 +96,8 @@ const boundaries = [
         Share authentication policy. <span>Never share identity state.</span>
       </h1>
       <p class="hero-summary">
-        A focused email-code and passkey foundation for Santiago-owned Cloudflare applications. Better Auth handles the
-        protocol; each product decides who may sign in and keeps its own users, sessions, secrets, cookies, and recovery
-        path.
+        {siteDescription} Better Auth handles the protocol; each product keeps its own users, sessions, secrets,
+        cookies, and recovery path.
       </p>
       <div class="hero-actions">
         <ButtonLink href="#integrate" showArrow>
@@ -109,12 +107,12 @@ const boundaries = [
           View the source
         </ButtonLink>
         <ButtonLink href="/multi-user" variant="secondary" showArrow>
-          Add multiple accounts
+          Multi-user guide
         </ButtonLink>
       </div>
       <p class="package-availability" id="package-availability">
-        <strong>Available on npm as experimental 0.x.</strong> Pin the version and keep the existing login and recovery
-        path while verifying a consumer on its real origin.
+        <strong>Available on npm as experimental 0.x.</strong> The v0.4.0 release prepares the complete split package
+        set for public installation while each product retains its own rollout checks.
         <a href={npmPackageURL} target="_blank" rel="noopener noreferrer" aria-describedby="package-availability">
           npm package page
         </a>
@@ -188,7 +186,7 @@ const boundaries = [
       <Card as="article">
         <p class="feature-index">A</p>
         <h3>Private email discovery</h3>
-        <p>Rejected addresses receive the same success-shaped response without code delivery or user creation.</p>
+        <p>Unknown addresses receive the same success-shaped response without code delivery or database persistence.</p>
       </Card>
       <Card as="article">
         <p class="feature-index">B</p>
@@ -213,13 +211,9 @@ const boundaries = [
       <p>Integration</p>
       <h2 id="integrate-title">Small API, deliberate cutover</h2>
       <p>
-        The package is public for controlled evaluation. Copy the canonical D1 schema into an app-owned additive
-        migration, configure exact browser and auth server origins, then validate email delivery and passkeys before
-        cutting over.
+        The compatibility package is public. Version 0.4.0 prepares the client, Hono, machine, migration, email,
+        recovery, and testing packages for their first coordinated public release.
       </p>
-      <a class="section-link" href="/multi-user">
-        Read the multi-user integration guide
-      </a>
       <a class="section-link" href={npmPackageURL} target="_blank" rel="noopener noreferrer">
         Check npm publication status
       </a>
@@ -250,10 +244,7 @@ const boundaries = [
     <div class="section-heading">
       <p>Release discipline</p>
       <h2 id="readiness-title">Production is a verified state, not a label</h2>
-      <p>
-        The repository can prove package behavior and publish an experimental release. Consumer-origin evidence is still
-        required before calling an integration production-ready or the package stable.
-      </p>
+      <p>The repository can prove package behavior now. Publication still waits for consumer-origin evidence.</p>
     </div>
     <div class="readiness-grid">
       <Card as="article" variant="muted">
@@ -263,12 +254,12 @@ const boundaries = [
           <li>Strict TypeScript, ESLint, spelling, formatting, and unused-code checks</li>
           <li>D1 integration, package-contract, security, accessibility, and responsive browser tests</li>
           <li>Quality-managed hooks, Commitprompt enforcement, PR labels, CodeQL, and dependency updates</li>
-          <li>Release-branch npm automation, provenance, immutable version tags, and GitHub Releases</li>
+          <li>Release-branch npm OIDC automation with immutable version tags and GitHub Releases</li>
         </ul>
       </Card>
       <Card as="article" variant="muted">
-        <Badge variant="warning">Required before stable</Badge>
-        <h3>Consumer adoption evidence</h3>
+        <Badge variant="warning">Required before publish</Badge>
+        <h3>Consumer evidence</h3>
         <ul>
           <li>Separate additive migrations in PostLens Planner and Observatory</li>
           <li>Email delivery and recovery rehearsal without exposing codes</li>

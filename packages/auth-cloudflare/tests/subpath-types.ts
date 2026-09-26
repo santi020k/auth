@@ -26,7 +26,13 @@ export function verifyMultiUserMiddlewareSurface(auth: MultiUserAuthInstance): A
   void createAuthMiddleware(auth);
   return {
     Variables: {
-      authSession: { email: "member@example.com", userId: "member-user-id" },
+      authSession: {
+        authenticatedAt: "2026-09-25T12:00:00.000Z",
+        email: "member@example.com",
+        expiresAt: "2026-10-25T12:00:00.000Z",
+        sessionId: "member-session-id",
+        userId: "member-user-id",
+      },
     },
   };
 }
@@ -35,7 +41,13 @@ export function verifyMiddlewareSurface(auth: OwnerAuthInstance): OwnerAuthEnv {
   void createOwnerAuthMiddleware(auth);
   return {
     Variables: {
-      ownerAuthSession: { email: "owner@example.com", userId: "owner-user-id" },
+      ownerAuthSession: {
+        authenticatedAt: "2026-09-25T12:00:00.000Z",
+        email: "owner@example.com",
+        expiresAt: "2026-10-25T12:00:00.000Z",
+        sessionId: "owner-session-id",
+        userId: "owner-user-id",
+      },
     },
   };
 }

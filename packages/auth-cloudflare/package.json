@@ -1,6 +1,6 @@
 {
   "name": "@santi020k/auth-cloudflare",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Single-owner and multi-user Better Auth policy for Hono applications on Cloudflare Workers and D1.",
   "license": "MIT",
   "author": {
@@ -47,13 +47,14 @@
     "better-auth": "catalog:"
   },
   "devDependencies": {
+    "@santi020k/auth-testing": "workspace:*",
     "@types/node": "catalog:",
     "hono": "catalog:",
     "miniflare": "catalog:",
     "typescript": "catalog:"
   },
   "peerDependencies": {
-    "hono": "^4.13.9"
+    "hono": ">=4.12.30 <5"
   },
   "engines": {
     "node": ">=22.22.3"
@@ -69,6 +70,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   }
 }

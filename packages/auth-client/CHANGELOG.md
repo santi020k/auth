@@ -1,0 +1,12 @@
+# @santi020k/auth-client
+
+## 0.4.0
+
+### Minor Changes
+
+- e374e96: Split the Cloudflare authentication platform into typed client, Hono, migration, email, recovery, and testing packages;
+  preserve the existing Cloudflare compatibility exports; add optional OAuth, Turnstile, recent-authentication guards,
+  session lifecycle controls, isolated migration namespaces, localized delivery, and Web Crypto recovery primitives.
+  Provider error codes are normalized with bounded, linear-time processing before they reach application UI.
+  Passkey sign-in confirms a fresh server session before reporting success, so an application-revoked credential cannot
+  appear signed in because of a stale client result.

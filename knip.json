@@ -5,10 +5,31 @@
       "entry": ["src/**/*.ts", "tests/**/*.ts"]
     },
     "apps/website": {
-      "entry": ["src/pages/**/*.astro", "tests/**/*.ts"]
+      "entry": ["og.config.mjs", "src/pages/**/*.astro", "tests/**/*.ts"]
     },
     "packages/auth-cloudflare": {
-      "entry": ["src/index.ts", "tests/**/*.test.ts", "tests/subpath-types.ts"]
+      "entry": ["src/*.ts", "tests/**/*.test.ts", "tests/subpath-types.ts", "tests/v03-compat-types.ts"]
+    },
+    "packages/auth-client": {
+      "entry": ["src/index.ts", "tests/**/*.test.ts"]
+    },
+    "packages/auth-email-resend": {
+      "entry": ["src/index.ts", "tests/**/*.test.ts"]
+    },
+    "packages/auth-hono": {
+      "entry": ["src/index.ts", "tests/**/*.test.ts"]
+    },
+    "packages/auth-machine": {
+      "entry": ["src/index.ts", "tests/**/*.test.ts"]
+    },
+    "packages/auth-migrations": {
+      "entry": ["src/index.ts", "src/cli.ts", "tests/**/*.test.ts"]
+    },
+    "packages/auth-recovery": {
+      "entry": ["src/index.ts", "tests/**/*.test.ts"]
+    },
+    "packages/auth-testing": {
+      "entry": ["src/index.ts", "tests/**/*.test.ts"]
     }
   },
   "ignoreBinaries": ["quality"],

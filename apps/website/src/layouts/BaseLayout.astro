@@ -3,31 +3,19 @@ import "@santi020k/lumen-astro/styles.css";
 import "../styles/global.css";
 
 import UIPrimitives from "@santi020k/lumen-astro/runtime";
+import MetadataHead from "@santi020k/og/astro/head";
+import type { PageMetadata } from "@santi020k/og/metadata";
+import { type JsonLdDocument, serializeJsonLd } from "@santi020k/og/schema";
+
+import LogoMark from "../assets/logo-mark.svg";
+import { authSite } from "../lib/seo";
 
 interface Props {
-  description: string;
-  title: string;
+  page: PageMetadata;
+  structuredData?: JsonLdDocument;
 }
 
-const { description, title } = Astro.props;
-const canonicalURL = new URL(Astro.url.pathname, Astro.site);
-const socialTitle = title === "santi020k auth" ? title : `${title} · santi020k auth`;
-const structuredData = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareSourceCode",
-  author: {
-    "@type": "Person",
-    name: "Santiago Molina",
-    url: "https://santi020k.com",
-  },
-  codeRepository: "https://github.com/santi020k/auth",
-  description,
-  name: "santi020k auth",
-  programmingLanguage: "TypeScript",
-  sameAs: ["https://github.com/santi020k/auth", "https://www.npmjs.com/package/@santi020k/auth-cloudflare"],
-  runtimePlatform: "Cloudflare Workers",
-  url: canonicalURL.href,
-};
+const { page, structuredData } = Astro.props;
 ---
 
 <!doctype html>
@@ -35,19 +23,14 @@ const structuredData = {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content={description} />
-    <meta name="author" content="Santiago Molina" />
+    <MetadataHead page={page} site={authSite.options} noindexPolicy="minimal" />
+    <meta name="application-name" content="santi020k auth" />
+    <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#173e30" />
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content={socialTitle} />
-    <meta property="og:description" content={description} />
-    <meta property="og:url" content={canonicalURL} />
-    <meta property="og:site_name" content="santi020k auth" />
-    <meta name="twitter:card" content="summary" />
-    <link rel="canonical" href={canonicalURL} />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>{socialTitle}</title>
-    <script type="application/ld+json" set:html={JSON.stringify(structuredData)}></script>
+    <link rel="icon" href="/favicon.svg" sizes="any" type="image/svg+xml" />
+    <link rel="mask-icon" href="/mask-icon.svg" color="#1d4f3b" />
+    <link rel="manifest" href="/site.webmanifest" />
+    {structuredData && <script type="application/ld+json" set:html={serializeJsonLd(structuredData)}></script>}
   </head>
   <body>
     <a class="skip-link" href="#main-content">
@@ -56,11 +39,7 @@ const structuredData = {
     <UIPrimitives />
     <header class="site-header">
       <a class="brand" href="/" aria-label="santi020k auth home">
-        <svg aria-hidden="true" viewBox="0 0 28 28">
-          <rect width="28" height="28" rx="8"></rect>
-          <path d="M9 14v-3a5 5 0 0 1 10 0v3"></path>
-          <rect x="7" y="13" width="14" height="10" rx="3"></rect>
-        </svg>
+        <LogoMark width="36" height="36" aria-hidden="true" />
         <span>
           <strong>auth</strong>
           <small>by santi020k</small>
@@ -70,6 +49,7 @@ const structuredData = {
         <a href="/multi-user">Multi-user</a>
         <a href="/#architecture">Architecture</a>
         <a href="/#security">Security</a>
+        <a href="/packages">Packages</a>
         <a href="/#integrate">Integrate</a>
         <a href="/#readiness">Readiness</a>
         <a href="https://github.com/santi020k/auth" target="_blank" rel="noopener noreferrer">

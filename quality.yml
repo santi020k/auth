@@ -23,6 +23,10 @@ tools:
     enabled: true
     check: false
     required: true
+  santi-og:
+    enabled: true
+    check: false
+    required: true
 tasks:
   repository-check:
     name: Repository verification
