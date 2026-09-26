@@ -24,6 +24,9 @@ recovery process, and deployment.
 The split packages are prepared for the v0.4.0 public release. The existing `@santi020k/auth-cloudflare` contract and
 its compatibility subpaths remain supported. Sharing a package never creates a shared account system.
 
+The planned [v0.5.0 release](docs/v0.5.0-plan.md) focuses on making machine credentials operationally useful through
+an asynchronous storage boundary, explicit Hono middleware, lifecycle helpers, and reusable contract tests.
+
 ## Workspace
 
 - `packages/auth-cloudflare`, `packages/auth-client`, `packages/auth-hono`, `packages/auth-machine`, `packages/auth-migrations`,
