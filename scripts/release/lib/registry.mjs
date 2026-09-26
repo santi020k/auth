@@ -24,6 +24,60 @@ export function npmView(spec, field) {
   return value === "" ? null : value;
 }
 
+function sleepMilliseconds(delayMs) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+}
+
+function assertWaitOptions(attempts, delayMs) {
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error("npm verification attempts must be a positive integer.");
+  }
+  if (!Number.isInteger(delayMs) || delayMs < 0) {
+    throw new Error("npm verification delay must be a non-negative integer.");
+  }
+}
+
+function readExpectedVersion(readVersion, spec, expectedVersion) {
+  try {
+    return { error: null, verified: readVersion(spec) === expectedVersion };
+  } catch (error) {
+    return { error, verified: false };
+  }
+}
+
+function finishVersionWait(lastError, spec, attempts) {
+  if (lastError instanceof Error) {
+    throw new Error(`npm verification failed for ${spec} after ${attempts} attempts.`, { cause: lastError });
+  }
+  return false;
+}
+
+export function waitForNpmVersion(spec, expectedVersion, options = {}) {
+  const {
+    attempts = 30,
+    delayMs = 30_000,
+    onRetry = () => undefined,
+    readVersion = (currentSpec) => npmView(currentSpec, "version"),
+    sleep = sleepMilliseconds,
+  } = options;
+
+  assertWaitOptions(attempts, delayMs);
+
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = readExpectedVersion(readVersion, spec, expectedVersion);
+    lastError = result.error;
+    if (result.verified) return true;
+
+    if (attempt < attempts) {
+      onRetry({ attempt, attempts });
+      sleep(delayMs);
+    }
+  }
+
+  return finishVersionWait(lastError, spec, attempts);
+}
+
 export function parseRemoteTagOutput(output) {
   const refs = new Map(
     output

@@ -6,7 +6,14 @@ import { fileURLToPath } from "node:url";
 
 import { packPackage } from "./lib/pack.mjs";
 import { readWorkspacePackages, topologicalOrder } from "./lib/packages.mjs";
-import { createAndPushTag, npmView, planPublish, planTag, remoteTagCommit } from "./lib/registry.mjs";
+import {
+  createAndPushTag,
+  npmView,
+  planPublish,
+  planTag,
+  remoteTagCommit,
+  waitForNpmVersion,
+} from "./lib/registry.mjs";
 import { validateFixedGroupCoherence, validatePackageMetadata } from "./lib/validate.mjs";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -110,8 +117,10 @@ function publishEntry(entry) {
     throw new Error(`pnpm publish failed for ${entry.spec}.`);
   }
 
-  const published = npmView(entry.spec, "version");
-  if (published !== entry.pkg.manifest.version) {
+  const published = waitForNpmVersion(entry.spec, entry.pkg.manifest.version, {
+    onRetry: ({ attempt, attempts }) => log(`Waiting for ${entry.spec} on npm (${attempt}/${attempts}).`),
+  });
+  if (!published) {
     throw new Error(`${entry.spec} did not verify on npm after publishing.`);
   }
   log(`Verified ${entry.spec} on npm.`);

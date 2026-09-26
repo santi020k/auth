@@ -15,7 +15,7 @@ const packages = readWorkspacePackages(packagesRoot);
 const issues = [];
 
 for (const pkg of packages) {
-  issues.push(...validatePackageMetadata(pkg, { requirePublishable: false }));
+  issues.push(...validatePackageMetadata(pkg, { requirePublishable: true }));
 }
 issues.push(...validateFixedGroupCoherence(packages, changesetConfig));
 
