@@ -74,8 +74,14 @@ export function createAuthJsonRequest(options: AuthJsonRequestOptions): Request 
   });
 }
 
+/**
+ * Extracts the first cookie's name=value pair. Uses `getSetCookie()` rather than
+ * `get("Set-Cookie")`, whose single-string return value comma-joins multiple Set-Cookie
+ * headers (for example a session cookie alongside a WebAuthn challenge cookie) into one
+ * string that a naive `;`-split can parse incorrectly.
+ */
 export function readResponseCookie(response: Response): string {
-  const setCookie = response.headers.get("Set-Cookie");
+  const [setCookie] = response.headers.getSetCookie();
   if (!setCookie) throw new Error("auth_test_cookie_missing");
   const cookie = setCookie.split(";", 1)[0];
   if (!cookie) throw new Error("auth_test_cookie_missing");

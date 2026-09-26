@@ -54,6 +54,20 @@ void describe("auth testing utilities", () => {
     assert.throws(() => readResponseCookie(new Response()), /auth_test_cookie_missing/u);
   });
 
+  void it("extracts the first cookie without corruption when a response sets more than one", () => {
+    // `get("Set-Cookie")` comma-joins multiple Set-Cookie headers into one string. When the first
+    // cookie carries no `;`-delimited attribute (nothing to stop at before the join), a plain
+    // `;`-split runs past the comma and merges both cookies into one corrupted value. Reading
+    // through `getSetCookie()` keeps each header distinct regardless of its attributes.
+    const response = new Response(null, {
+      headers: [
+        ["Set-Cookie", "session=value"],
+        ["Set-Cookie", "webauthn-challenge=abc; Path=/; Max-Age=0"],
+      ],
+    });
+    assert.equal(readResponseCookie(response), "session=value");
+  });
+
   void it("builds independent expiry, revocation, rate-limit, and origin contract vectors", () => {
     const fixtures = createAuthContractFixtures({
       allowedOrigin: "https://app.example.com",

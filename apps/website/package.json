@@ -14,7 +14,7 @@
     "generate:og": "santi-og generate --config og.config.mjs",
     "preview": "wrangler dev --ip 127.0.0.1 --port 4393",
     "preview:test": "node scripts/serve-static.mjs",
-    "test": "astro check",
+    "test": "astro check && node --test scripts/*.test.mjs",
     "test:e2e": "pnpm run build && playwright test",
     "typecheck": "astro check"
   },

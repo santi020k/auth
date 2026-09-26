@@ -1,14 +1,15 @@
 # Package releases
 
 `@santi020k/auth-cloudflare` already has a public npm contract, including its compatibility subpaths. The newer
-`@santi020k/auth-client`, `@santi020k/auth-email-resend`, `@santi020k/auth-hono`, `@santi020k/auth-migrations`,
-`@santi020k/auth-recovery`, and `@santi020k/auth-testing` packages are not currently published. Their `private: true`
-manifest flags are an intentional release gate, not a registry or GitHub Actions failure. Publication remains blocked
-until two independent consumers complete the production evidence in [production readiness](production-readiness.md).
+`@santi020k/auth-client`, `@santi020k/auth-email-resend`, `@santi020k/auth-hono`, `@santi020k/auth-machine`,
+`@santi020k/auth-migrations`, `@santi020k/auth-recovery`, and `@santi020k/auth-testing` packages are not currently
+published. Their `private: true` manifest flags are an intentional release gate, not a registry or GitHub Actions
+failure. Publication remains blocked until two independent consumers complete the production evidence in
+[production readiness](production-readiness.md).
 
 ## Fixed release group
 
-The seven packages above version together as a single Changesets `fixed` group in `.changeset/config.json`: every release
+The eight packages above version together as a single Changesets `fixed` group in `.changeset/config.json`: every release
 bumps all of them to the same version, even if a given release only changed one package. `pnpm run check:release`
 (part of `pnpm verify`) enforces that the group stays coherent — every publishable package under `packages/*` is listed
 in the fixed group, nothing stale remains in the group, every package's version matches the others, and no package
@@ -49,7 +50,7 @@ forward-recovery plan.
 ## Initial npm publication
 
 npm requires a package to exist before a trusted publisher can be attached to it, so the first publication of each of
-the six unpublished split packages is a manual, one-time exception. Perform it once per new package, in dependency
+the seven unpublished split packages is a manual, one-time exception. Perform it once per new package, in dependency
 order, after the two-consumer gate passes and `private: true` has been removed in the release pull request. Do not
 repeat initial publication for `@santi020k/auth-cloudflare`:
 
@@ -60,12 +61,13 @@ pnpm --dir packages/auth-migrations publish --access public
 pnpm --dir packages/auth-client publish --access public
 pnpm --dir packages/auth-email-resend publish --access public
 pnpm --dir packages/auth-hono publish --access public
+pnpm --dir packages/auth-machine publish --access public
 pnpm --dir packages/auth-recovery publish --access public
 pnpm --dir packages/auth-testing publish --access public
 ```
 
 Use 2FA for each manual publish. That manual exception is for the initial publication of each package only; every
-later release of that package flows through the automated workflow below. Immediately after the six new initial
+later release of that package flows through the automated workflow below. Immediately after the seven new initial
 publications, configure npm trusted publishing for each new package with:
 
 - GitHub owner: `santi020k`
@@ -92,7 +94,7 @@ GitHub Release, or public artifact and does not count as production evidence by 
 
 After the trusted publishers exist, merging an exact `release/v<semver>` pull request runs `Release package`. The
 workflow re-runs the complete repository gate (`pnpm verify`, which includes `check:release`'s metadata, Changesets
-coherence, and pack validation for all seven packages), then runs `node scripts/release/publish.mjs`, which:
+coherence, and pack validation for all eight packages), then runs `node scripts/release/publish.mjs`, which:
 
 1. Re-validates every package's metadata and refuses to continue if any package is still private or the fixed group
    has drifted.

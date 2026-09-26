@@ -15,6 +15,7 @@ recovery process, and deployment.
 - `@santi020k/auth-cloudflare`: Better Auth server policy for Cloudflare Workers and D1.
 - `@santi020k/auth-client`: typed email OTP and passkey browser client.
 - `@santi020k/auth-hono`: Hono route, session-resolution, and authentication middleware adapters.
+- `@santi020k/auth-machine`: scoped, hashed bearer credentials for non-interactive MCP and API clients.
 - `@santi020k/auth-migrations`: reviewed default and prefix-isolated D1 migration generation.
 - `@santi020k/auth-email-resend`: redacted Resend delivery with English and Spanish code templates.
 - `@santi020k/auth-recovery`: subject-scoped, peppered one-time recovery-code issuance and consumption primitives.
@@ -26,7 +27,7 @@ subpaths remain supported. Sharing a package never creates a shared account syst
 
 ## Workspace
 
-- `packages/auth-cloudflare`, `packages/auth-client`, `packages/auth-hono`, `packages/auth-migrations`,
+- `packages/auth-cloudflare`, `packages/auth-client`, `packages/auth-hono`, `packages/auth-machine`, `packages/auth-migrations`,
   `packages/auth-email-resend`, `packages/auth-recovery`, `packages/auth-testing`: the fixed-version release group
   described above.
 - `apps/playground`: local-only Hono/D1 app for email-code and platform-passkey verification.
@@ -101,6 +102,8 @@ immutable version tags, and initial-release requirements.
 - Only the configured owner or identities approved by the consumer may create or update a user.
 - Email codes are hashed in Better Auth storage, expire after ten minutes, and allow five attempts.
 - Passkeys require discoverable credentials and user verification.
+- Machine credentials store only high-entropy token digests, carry explicit scopes, and are accepted only on routes a
+  consumer deliberately exposes to automation.
 - Rate limits persist in D1 rather than isolate memory.
 - Production origins require HTTPS and secure cookies.
 - Every consumer uses a separate secret, database, cookie prefix, hostname, passkeys, and recovery policy.

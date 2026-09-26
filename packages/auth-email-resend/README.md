@@ -17,6 +17,9 @@ Consumers still own secret injection, sender-domain configuration, and locale se
 `createLoginCodeEmailRenderer()` can customize copy and markup. `onAttempt`, `onDelivered`, and `onFailed` hooks receive
 redacted metadata (never the code or provider response body); hook failures do not change delivery behavior.
 
+The Resend request aborts after `timeoutMs` (default 10000) instead of hanging on an unresponsive provider, surfacing
+the same redacted `AuthEmailDeliveryError` an HTTP failure would so `onFailed` and consumer retry policy still run.
+
 For local browser development only, an in-memory mailbox is available behind two gates: `enabled: true` and an exact
 localhost/loopback origin. It throws for remote origins and when disabled, so it cannot become a production fallback:
 

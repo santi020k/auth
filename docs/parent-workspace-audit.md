@@ -81,6 +81,7 @@ still own their migration journal, durable audit-event destination, delivery con
 - `@santi020k/auth-email-resend` for redacted provider delivery and localized templates.
 - `@santi020k/auth-recovery` for high-entropy, subject-scoped one-time recovery-code primitives.
 - `@santi020k/auth-testing` for Miniflare fixtures and reusable request/database contract tests.
+- `@santi020k/auth-machine` for scoped, hashed bearer credentials for non-interactive MCP and API clients.
 
 Recovery authority, replacement policy, storage transactions, and authorization remain consumer-owned because the
 current products do not share the same requirements.

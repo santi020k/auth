@@ -78,6 +78,36 @@ void describe("Resend authentication email", () => {
     );
   });
 
+  void it("aborts an unresponsive Resend request instead of hanging indefinitely", async () => {
+    const sender = createResendAuthEmailSender({
+      apiKey: "secret-api-key",
+      fetch: (_input, init) =>
+        // A real hung connection keeps the event loop alive on its own; this stand-in timer
+        // mimics that so the (intentionally unref'd) AbortSignal.timeout gets a chance to fire.
+        new Promise((_resolve, reject) => {
+          const keepEventLoopAlive = setTimeout(() => {}, 5000);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(keepEventLoopAlive);
+            reject(new DOMException("Timed out", "TimeoutError"));
+          });
+        }),
+      from: "login@example.com",
+      timeoutMs: 20,
+    });
+    await assert.rejects(
+      sender({ appName: "Example", email: "owner@example.com", otp: "123456" }),
+      (error: unknown) =>
+        error instanceof AuthEmailDeliveryError && error.status === null && error.providerRequestId === null,
+    );
+  });
+
+  void it("rejects a non-positive timeout before any request is sent", () => {
+    assert.throws(
+      () => createResendAuthEmailSender({ apiKey: "secret-api-key", from: "login@example.com", timeoutMs: 0 }),
+      /auth_email_timeout_invalid/u,
+    );
+  });
+
   void it("rejects malformed addresses and codes before delivery", () => {
     assert.throws(
       () => renderLoginCodeEmail({ appName: "Example", email: "invalid", otp: "123456" }),

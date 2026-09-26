@@ -44,6 +44,20 @@ export function resolveAuthTableNames(tablePrefix?: string): AuthTableNames {
   };
 }
 
+/**
+ * Better Auth's own rate limiter never runs for a request this package rejects before
+ * calling `auth.handler` (an unauthorized email must never reach it, so no OTP row gets
+ * created for an address that will never receive one). Without an independent limit here,
+ * that rejection path — which still calls the consumer's `authorizeEmail`, a D1 lookup for
+ * multi-user consumers — would accept unlimited requests per IP. This backstop is deliberately
+ * more generous than Better Auth's own tight per-path special rules (window 60s, max 3): those
+ * still apply on top of this for any request that turns out to be authorized, so this only
+ * needs to turn "unlimited" into "bounded" without constraining legitimate retry bursts.
+ */
+const PRE_AUTH_RATE_LIMIT_WINDOW_SECONDS = 60;
+const PRE_AUTH_RATE_LIMIT_MAX = 20;
+const NO_TRUSTED_IP_KEY = "no-trusted-ip";
+
 export interface AuthEmail {
   email: string;
   otp: string;
@@ -85,6 +99,7 @@ export type AuthSecurityEvent =
   | { email: string; type: "email_otp_requested" }
   | { revokedSessions: number; type: "emergency_lockout"; userId: string }
   | { origin: string | null; path: string; type: "request_origin_rejected" }
+  | { path: string; type: "request_rate_limited" }
   | { sessionId: string; type: "session_created"; userId: string }
   | { sessionId: string; type: "session_revoked"; userId: string }
   | { revokedSessions: number; type: "sessions_revoked_all"; userId: string };
@@ -231,6 +246,16 @@ function deferLifecycleTask(task: () => Promise<void>): Promise<void> {
   return new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   }).then(task);
+}
+
+function rateLimitedResponse(): Response {
+  return Response.json(
+    { code: "request_rate_limited", message: "request_rate_limited" },
+    {
+      headers: { "Cache-Control": "no-store", "Retry-After": String(PRE_AUTH_RATE_LIMIT_WINDOW_SECONDS) },
+      status: 429,
+    },
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -532,12 +557,58 @@ async function rejectUnauthorizedEmail(
   return errorResponse(401, invalidCredentialsCode);
 }
 
+function clientIp(request: Request): string {
+  return request.headers.get("cf-connecting-ip")?.trim() || NO_TRUSTED_IP_KEY;
+}
+
+/**
+ * Atomically increments (or starts) a fixed-window counter in one statement: SQLite evaluates
+ * the `ON CONFLICT` update as part of the same atomic operation as the insert attempt, so
+ * concurrent callers for the same key are serialized by the database rather than racing on a
+ * separate read-then-write pair. Returns the resulting count for this window.
+ */
+async function consumePreAuthRateLimitCount(
+  database: D1Database,
+  rateLimitTable: string,
+  key: string,
+): Promise<number> {
+  const now = Date.now();
+  const windowStart = now - PRE_AUTH_RATE_LIMIT_WINDOW_SECONDS * 1000;
+  const row = await database
+    .prepare(
+      `INSERT INTO "${rateLimitTable}" ("id", "key", "count", "lastRequest")
+       VALUES (?1, ?2, 1, ?3)
+       ON CONFLICT("key") DO UPDATE SET
+         "count" = CASE WHEN "lastRequest" <= ?4 THEN 1 ELSE "count" + 1 END,
+         "lastRequest" = CASE WHEN "lastRequest" <= ?4 THEN ?3 ELSE "lastRequest" END
+       RETURNING "count"`,
+    )
+    .bind(crypto.randomUUID(), key, now, windowStart)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+async function enforcePreAuthRateLimit(
+  policy: AuthPolicy,
+  database: D1Database,
+  request: Request,
+  path: string,
+  emit: AuthSecurityEventListener | undefined,
+): Promise<Response | null> {
+  const key = `pre-auth:${clientIp(request)}:${path}`;
+  const count = await consumePreAuthRateLimitCount(database, policy.tableNames.rateLimit, key);
+  if (count <= PRE_AUTH_RATE_LIMIT_MAX) return null;
+  await emitSecurityEvent(emit, { path, type: "request_rate_limited" });
+  return rateLimitedResponse();
+}
+
 async function enforceAuthRequest(
   policy: AuthPolicy,
   authorizeEmail: (email: string) => boolean | Promise<boolean>,
   invalidCredentialsCode: string,
   request: Request,
   emit?: AuthSecurityEventListener,
+  database?: D1Database,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith(`${policy.basePath}/`) && url.pathname !== policy.basePath) return null;
@@ -546,6 +617,17 @@ async function enforceAuthRequest(
   if (originRejection) return originRejection;
 
   if (request.method.toUpperCase() !== "POST") return null;
+
+  // Better Auth's own rate limiter lives inside auth.handler and never runs for a request
+  // rejected here, so a request that will be rejected below for an unauthorized email must
+  // still be bounded — otherwise authorizeEmail (a D1 lookup for multi-user consumers) could
+  // be invoked without limit. Requests that pass through to auth.handler remain additionally
+  // bounded by Better Auth's own configured rate limit.
+  if (database) {
+    const rateLimitRejection = await enforcePreAuthRateLimit(policy, database, request, url.pathname, emit);
+    if (rateLimitRejection) return rateLimitRejection;
+  }
+
   const email = await requestEmail(request);
   if (email === null || (email !== "" && (await authorizeEmail(email)))) return null;
   return rejectUnauthorizedEmail(policy, url.pathname, email, invalidCredentialsCode, emit);
@@ -811,6 +893,7 @@ function createConfiguredAuth<TPolicy extends AuthPolicy>(
         invalidCredentialsCode,
         request,
         options.onSecurityEvent,
+        options.database,
       );
       if (rejection) return withCors(policy, request, rejection);
       const currentSession = await auth.api.getSession({

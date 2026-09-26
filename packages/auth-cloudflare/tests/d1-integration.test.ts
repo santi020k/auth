@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
-import { type AuthD1TestHarness, createAuthD1TestHarness } from "@santi020k/auth-testing";
+import { type AuthD1TestHarness, createAuthD1TestHarness, readResponseCookie } from "@santi020k/auth-testing";
 import { Hono } from "hono";
 
 import { type AuthSecurityEvent, createMultiUserAuth, createOwnerAuth, type OwnerAuthInstance } from "../src/index.js";
@@ -135,10 +135,7 @@ void describe("Cloudflare D1 integration", () => {
 
     const signInResponse = await app.request(authRequest("/sign-in/email-otp", { email: ownerEmail, otp: code }));
     assert.equal(signInResponse.status, 200, await signInResponse.clone().text());
-    const setCookie = signInResponse.headers.get("Set-Cookie");
-    assert.ok(setCookie);
-    const cookie = setCookie.split(";", 1)[0];
-    assert.ok(cookie);
+    const cookie = readResponseCookie(signInResponse);
 
     const session = await auth.resolveSession(new Headers({ Cookie: cookie }));
     assert.ok(session);
@@ -324,11 +321,7 @@ void describe("Cloudflare D1 integration", () => {
       assert.ok(otp);
       const signInResponse = await multiUserApp.request(authRequest("/sign-in/email-otp", { email, otp }));
       assert.equal(signInResponse.status, 200, await signInResponse.clone().text());
-      const setCookie = signInResponse.headers.get("Set-Cookie");
-      assert.ok(setCookie);
-      const cookie = setCookie.split(";", 1)[0];
-      assert.ok(cookie);
-      return cookie;
+      return readResponseCookie(signInResponse);
     }
 
     const firstCookie = await signIn("first@example.com");
@@ -399,6 +392,56 @@ void describe("Cloudflare D1 integration", () => {
     assert.equal(row, null);
   });
 
+  void it("bounds unauthorized-email requests even though Better Auth's own rate limiter never sees them", async () => {
+    // Better Auth's rate limiter lives inside auth.handler, which this package deliberately
+    // never calls for a request rejected over an unauthorized email (so no OTP row is ever
+    // created for an address that will never receive one). Without an independent limit for
+    // that rejection path, authorizeEmail — a D1 lookup for multi-user consumers — could be
+    // invoked without bound.
+    const isolatedHarness = await createAuthD1TestHarness({ tablePrefix: "denial" });
+    const events: AuthSecurityEvent[] = [];
+    try {
+      const floodAuth = createOwnerAuth({
+        appName: "Flood guard integration test",
+        baseURL: origin,
+        cookiePrefix: "integration-denial",
+        database: isolatedHarness.database,
+        onSecurityEvent: (event) => {
+          events.push(event);
+        },
+        ownerEmail,
+        secret: "integration-test-secret-that-is-at-least-32-characters",
+        sendVerificationOTP: () => Promise.resolve(),
+        tablePrefix: "denial",
+      });
+
+      const attackerRequest = () =>
+        new Request(`${origin}/api/auth/email-otp/send-verification-otp`, {
+          body: JSON.stringify({ email: "not-the-owner@example.com", type: "sign-in" }),
+          headers: { "CF-Connecting-IP": "203.0.113.9", "Content-Type": "application/json", Origin: origin },
+          method: "POST",
+        });
+
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        // Sequential on purpose: each request must observe the previous one's counter update.
+        statuses.push((await floodAuth.handler(attackerRequest())).status);
+      }
+      assert.ok(statuses.includes(429), `expected a 429 among ${JSON.stringify(statuses)}`);
+      assert.ok(statuses.includes(200), "expected the earliest requests to still succeed");
+      assert.ok(events.some((event) => event.type === "request_rate_limited"));
+
+      const otherIpRequest = new Request(`${origin}/api/auth/email-otp/send-verification-otp`, {
+        body: JSON.stringify({ email: "not-the-owner@example.com", type: "sign-in" }),
+        headers: { "CF-Connecting-IP": "198.51.100.4", "Content-Type": "application/json", Origin: origin },
+        method: "POST",
+      });
+      assert.equal((await floodAuth.handler(otherIpRequest)).status, 200);
+    } finally {
+      await isolatedHarness.dispose();
+    }
+  });
+
   void it("lists only active safe session summaries and supports scoped revocation and lockout", async () => {
     const isolatedHarness = await createAuthD1TestHarness({ tablePrefix: "managed" });
     const events: AuthSecurityEvent[] = [];
@@ -444,10 +487,7 @@ void describe("Cloudflare D1 integration", () => {
         await waitForBackgroundEffect(() => otp !== "");
         const signInResponse = await managedAuth.handler(authRequest("/sign-in/email-otp", { email: ownerEmail, otp }));
         assert.equal(signInResponse.status, 200, await signInResponse.clone().text());
-        const setCookie = signInResponse.headers.get("Set-Cookie");
-        assert.ok(setCookie);
-        const cookie = setCookie.split(";", 1)[0];
-        assert.ok(cookie);
+        const cookie = readResponseCookie(signInResponse);
         const identity = await managedAuth.resolveSession(new Headers({ Cookie: cookie }));
         assert.ok(identity);
         return { cookie, sessionId: identity.sessionId, userId: identity.userId };

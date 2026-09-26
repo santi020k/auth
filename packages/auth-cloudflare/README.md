@@ -37,6 +37,9 @@ revocation, and emergency-lockout methods. Their `resolveSession` implementation
 
 - Email OTPs are six digits, expire after ten minutes, allow five verification attempts, and are stored hashed.
 - Rate limits are enabled in every environment and use D1 rather than per-isolate memory.
+- A D1-backed pre-authentication limit also bounds rejected POST requests per Cloudflare client IP and auth path
+  before email admission; Better Auth's stricter endpoint limits still apply to requests that continue into its
+  handler.
 - Only the configured owner or identities approved by the consumer may create or update an identity.
 - Unauthorized email-code requests receive the same success-shaped response without sending mail.
 - Unsafe requests require the exact configured browser `Origin` header.
@@ -150,9 +153,10 @@ const auth = createMultiUserAuth({
 });
 ```
 
-Events cover blocked origins or credentials, suppressed and failed email-code delivery, code requests, session
-creation, scoped revocation, revoke-all, and explicit emergency lockout. Listener failures are isolated from the auth
-flow. Event payloads intentionally omit codes, cookies, session tokens, secrets, and request bodies.
+Events cover blocked origins or credentials, pre-authentication rate limiting, suppressed and failed email-code
+delivery, code requests, session creation, scoped revocation, revoke-all, and explicit emergency lockout. Listener
+failures are isolated from the auth flow. Event payloads intentionally omit codes, cookies, session tokens, secrets,
+client IPs, and request bodies.
 
 Resolved identities include `authenticatedAt` and `expiresAt` ISO timestamps. Use `isRecentAuthentication` or the Hono
 recent-authentication middleware for sensitive actions. The application still chooses the step-up method and owns the

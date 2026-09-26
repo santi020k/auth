@@ -19,6 +19,9 @@
     "packages/auth-hono": {
       "entry": ["src/index.ts", "tests/**/*.test.ts"]
     },
+    "packages/auth-machine": {
+      "entry": ["src/index.ts", "tests/**/*.test.ts"]
+    },
     "packages/auth-migrations": {
       "entry": ["src/index.ts", "src/cli.ts", "tests/**/*.test.ts"]
     },

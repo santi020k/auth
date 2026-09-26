@@ -8,6 +8,7 @@
       "@santi020k/auth-cloudflare",
       "@santi020k/auth-email-resend",
       "@santi020k/auth-hono",
+      "@santi020k/auth-machine",
       "@santi020k/auth-migrations",
       "@santi020k/auth-recovery",
       "@santi020k/auth-testing"

@@ -221,9 +221,12 @@ export function createHonoAuthCors<E extends Env>(options: HonoAuthCorsOptions):
     if (preflight) return preflight;
 
     await next();
-    headers.forEach((value, name) => {
-      context.res.headers.set(name, value);
-    });
+    // Set directly on the post-`next()` response headers instead of copying the pre-built
+    // `headers` object wholesale: the downstream handler may have already set its own `Vary`
+    // (or other) headers, and overwriting them would silently discard that signal.
+    context.res.headers.set("Access-Control-Allow-Credentials", "true");
+    context.res.headers.set("Access-Control-Allow-Origin", origin);
+    appendVary(context.res.headers, "Origin");
     if (exposeHeaders.length > 0) context.res.headers.set("Access-Control-Expose-Headers", exposeHeaders.join(", "));
   };
 }

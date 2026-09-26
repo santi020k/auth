@@ -38,7 +38,7 @@ application secrets.
 ## Package publication gate
 
 Keep every not-yet-published package in the fixed release group (`@santi020k/auth-client`,
-`@santi020k/auth-email-resend`, `@santi020k/auth-hono`, `@santi020k/auth-migrations`,
+`@santi020k/auth-email-resend`, `@santi020k/auth-hono`, `@santi020k/auth-machine`, `@santi020k/auth-migrations`,
 `@santi020k/auth-recovery`, `@santi020k/auth-testing`) private until at least two separate applications have completed
 every item below. `@santi020k/auth-cloudflare` already has a public compatibility contract; retain its existing exports
 and do not treat it as an initial publication:
@@ -59,7 +59,7 @@ After two consumers satisfy the gate, remove `private: true` from each unpublish
 Changeset, verify package ownership, and follow [package releases](releasing.md). Each new package's initial npm
 publication is the only manual publication, performed once per package in dependency order, because npm requires a
 package to exist before trusted publishing can be configured for it. Every subsequent release must use a
-`release/v<semver>` pull request and GitHub Actions, which publishes, verifies, and tags all seven packages together in
+`release/v<semver>` pull request and GitHub Actions, which publishes, verifies, and tags all eight packages together in
 dependency order; do not publish later releases manually from a workstation.
 
 ## Rollback and recovery

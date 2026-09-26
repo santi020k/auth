@@ -112,6 +112,25 @@ void describe("Hono authentication adapters", () => {
     assert.match(response.headers.get("Vary") ?? "", /Origin/u);
   });
 
+  void it("adds Origin to Vary without discarding headers the downstream handler already set", async () => {
+    const app = new Hono();
+    app.use("/api/auth/*", createHonoAuthCors({ allowedOrigins: ["https://app.example.com"] }));
+    app.get("/api/auth/session", (context) => {
+      context.header("Vary", "Accept-Encoding");
+      context.header("X-Downstream", "kept");
+      return context.json({ ok: true });
+    });
+
+    const response = await app.request("https://api.example.com/api/auth/session", {
+      headers: { Origin: "https://app.example.com" },
+    });
+    assert.equal(response.status, 200);
+    const vary = response.headers.get("Vary") ?? "";
+    assert.match(vary, /Accept-Encoding/u);
+    assert.match(vary, /Origin/u);
+    assert.equal(response.headers.get("X-Downstream"), "kept");
+  });
+
   void it("handles valid preflight requests and rejects origin, method, or header widening", async () => {
     const app = new Hono();
     app.use(

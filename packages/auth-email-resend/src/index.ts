@@ -1,6 +1,7 @@
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const CODE_PATTERN = /^\d{6}$/u;
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 export type AuthEmailLocale = "en" | "es";
 
@@ -25,6 +26,8 @@ export interface ResendAuthEmailOptions {
   fetch?: typeof fetch;
   from: string;
   renderEmail?: AuthEmailRenderer;
+  /** Milliseconds before an unresponsive Resend request is aborted. Defaults to 10000. */
+  timeoutMs?: number;
 }
 
 export interface AuthEmailTemplateInput {
@@ -92,6 +95,12 @@ function positiveExpiry(value: number | undefined): number {
   const expiry = value ?? 10;
   if (!Number.isSafeInteger(expiry) || expiry <= 0) throw new Error("auth_email_expiry_invalid");
   return expiry;
+}
+
+function positiveTimeout(value: number | undefined): number {
+  const timeout = value ?? DEFAULT_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeout) || timeout <= 0) throw new Error("auth_email_timeout_invalid");
+  return timeout;
 }
 
 function resolveTemplateInput(input: LoginCodeEmailInput): AuthEmailTemplateInput {
@@ -172,6 +181,7 @@ async function deliverWithResend(
   from: string,
   email: RenderedEmail,
   metadata: AuthEmailDeliveryMetadata,
+  timeoutMs: number,
 ): Promise<AuthEmailDeliveryReceipt> {
   let response: Response;
   try {
@@ -185,6 +195,7 @@ async function deliverWithResend(
       }),
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       method: "POST",
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     throw new AuthEmailDeliveryError(null);
@@ -201,6 +212,7 @@ export function createResendAuthEmailSender(options: ResendAuthEmailOptions) {
   const from = requiredText(options.from, "auth_email_from_invalid");
   const request = options.fetch ?? fetch;
   const renderer = options.renderEmail ?? renderLoginCodeEmail;
+  const timeoutMs = positiveTimeout(options.timeoutMs);
 
   return async (input: LoginCodeEmailInput): Promise<AuthEmailDeliveryReceipt> => {
     const email = renderer(input);
@@ -211,7 +223,7 @@ export function createResendAuthEmailSender(options: ResendAuthEmailOptions) {
     };
     await callHook(options.hooks?.onAttempt, metadata);
     try {
-      const receipt = await deliverWithResend(request, apiKey, from, email, metadata);
+      const receipt = await deliverWithResend(request, apiKey, from, email, metadata, timeoutMs);
       await callHook(options.hooks?.onDelivered, receipt);
       return receipt;
     } catch (error) {
