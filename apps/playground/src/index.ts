@@ -1,5 +1,6 @@
 import { createMultiUserAuth, type MultiUserAuthInstance, normalizeOwnerEmail } from "@santi020k/auth-cloudflare";
-import { createHonoAuthHandler } from "@santi020k/auth-hono";
+import { createHonoAuthHandler, createRequireHonoMachineAuth } from "@santi020k/auth-hono";
+import { type CreatedMachineCredential, createMachineCredential } from "@santi020k/auth-machine";
 import { type Context, Hono } from "hono";
 
 interface Bindings {
@@ -19,10 +20,22 @@ interface MailboxRow {
 }
 
 const app = new Hono<{ Bindings: Bindings }>();
+let localMachineCredential: Promise<CreatedMachineCredential> | undefined;
 
 function isLocalRequest(request: Request): boolean {
   const hostname = new URL(request.url).hostname;
   return hostname === "127.0.0.1" || hostname === "localhost";
+}
+
+function getLocalMachineCredential(): Promise<CreatedMachineCredential> {
+  localMachineCredential ??= createMachineCredential({
+    credentialId: "local-playground",
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    name: "Local playground client",
+    scopes: ["playground:read"],
+    subject: "machine:local-playground",
+  });
+  return localMachineCredential;
 }
 
 app.get("/api/dev/latest-code", async (context) => {
@@ -43,6 +56,29 @@ app.post("/api/dev/revoke-owner", async (context) => {
     .run();
   return context.json({ success: true }, 200, { "Cache-Control": "no-store" });
 });
+
+app.get("/api/dev/machine-token", async (context) => {
+  if (context.env.ALLOW_LOCAL_CODE !== "true" || !isLocalRequest(context.req.raw)) return context.notFound();
+  const credential = await getLocalMachineCredential();
+  return context.json({ token: credential.token }, 200, { "Cache-Control": "no-store" });
+});
+
+app.use(
+  "/api/dev/machine",
+  createRequireHonoMachineAuth<{ Bindings: Bindings }>({
+    requiredScopes: ["playground:read"],
+    resolveCredential: async (context, credentialId) => {
+      if (context.env.ALLOW_LOCAL_CODE !== "true" || !isLocalRequest(context.req.raw)) return null;
+      const record = (await getLocalMachineCredential()).record;
+      return record.credentialId === credentialId ? record : null;
+    },
+  }),
+);
+function machineSuccessResponse(context: Context<{ Bindings: Bindings }>): Response {
+  return context.json({ message: "machine credential accepted" }, 200, { "Cache-Control": "no-store" });
+}
+
+app.get("/api/dev/machine", machineSuccessResponse);
 
 async function authorizePlaygroundEmail(context: Context<{ Bindings: Bindings }>, email: string): Promise<boolean> {
   if (normalizeOwnerEmail(email) !== normalizeOwnerEmail(context.env.OWNER_EMAIL)) return false;

@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  assertMachineAuthFailureIsSafe,
   createAuthContractFixtures,
   createAuthD1TestHarness,
   createAuthJsonRequest,
   createAuthTestClock,
   createConsumerIsolationFixtures,
+  createMachineAuthContractFixtures,
   createWebAuthnBoundaryFixtures,
   readResponseCookie,
 } from "../src/index.js";
@@ -95,6 +97,36 @@ void describe("auth testing utilities", () => {
     assert.deepEqual(second, { cookiePrefix: "consumer-test-b", tablePrefix: "consumer_test_b" });
     assert.notEqual(first.cookiePrefix, second.cookiePrefix);
     assert.notEqual(first.tablePrefix, second.tablePrefix);
+  });
+
+  void it("builds machine-auth request vectors and checks safe failures", async () => {
+    const fixtures = createMachineAuthContractFixtures({
+      insufficientScopeToken: "sma_reader_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      origin: "https://api.example.com",
+      unknownCredentialToken: "sma_unknown_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      validToken: "sma_writer_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
+    assert.equal(fixtures.validCredential.expectedStatus, 200);
+    assert.equal(fixtures.missingToken.request.headers.get("Authorization"), null);
+    assert.match(fixtures.oversizedToken.request.headers.get("Authorization") ?? "", /a{81}/u);
+    assert.equal(fixtures.insufficientScope.expectedStatus, 403);
+
+    const safeResponse = Response.json(
+      { error: "machine_authentication_required" },
+      { headers: { "Cache-Control": "no-store" }, status: 401 },
+    );
+    await assertMachineAuthFailureIsSafe(safeResponse, ["sma_secret"]);
+    await assert.rejects(
+      assertMachineAuthFailureIsSafe(
+        Response.json({ error: "sma_secret" }, { headers: { "Cache-Control": "no-store" }, status: 401 }),
+        ["sma_secret"],
+      ),
+      /auth_test_machine_failure_secret_leaked/u,
+    );
+    await assert.rejects(
+      assertMachineAuthFailureIsSafe(Response.json({ error: "unsafe" }, { status: 401 }), []),
+      /auth_test_machine_failure_cache_invalid/u,
+    );
   });
 
   void it("provides a deterministic clock for expiry contracts", () => {

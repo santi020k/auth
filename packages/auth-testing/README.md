@@ -23,3 +23,9 @@ an isolated provider delivery count, a security event, or database state rather 
 wrong-origin, wrong-challenge, and cross-origin cases. They deliberately stop at the browser boundary: they do not claim
 to be cryptographically valid authenticator responses. Real passkey verification still requires a rendered browser on
 each consumer's actual HTTPS origin.
+
+`createMachineAuthContractFixtures()` supplies valid, missing, malformed, oversized, unknown-credential, and
+insufficient-scope request vectors for a machine-only route. After dispatching a rejected vector,
+`assertMachineAuthFailureIsSafe()` verifies the `401`/`403` contract, `Cache-Control: no-store`, and absence of supplied
+tokens or digests from response headers and body. Consumers still create their own isolated records and assert the
+route's product-specific success response.

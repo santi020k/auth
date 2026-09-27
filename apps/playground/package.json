@@ -17,6 +17,7 @@
     "@santi020k/auth-client": "workspace:*",
     "@santi020k/auth-cloudflare": "workspace:*",
     "@santi020k/auth-hono": "workspace:*",
+    "@santi020k/auth-machine": "workspace:*",
     "hono": "catalog:"
   },
   "devDependencies": {

@@ -5,6 +5,9 @@ const TOKEN_PATTERN = /^sma_([a-z0-9]+(?:[._-][a-z0-9]+)*)_([A-Za-z0-9_-]{43})$/
 const HASH_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const MAXIMUM_CREDENTIALS = 100;
 const MAXIMUM_SCOPES = 50;
+const MAXIMUM_CREDENTIAL_ID_LENGTH = 80;
+const MAXIMUM_MACHINE_TOKEN_LENGTH = 4 + MAXIMUM_CREDENTIAL_ID_LENGTH + 1 + 43;
+const MAXIMUM_AUTHORIZATION_LENGTH = "Bearer ".length + MAXIMUM_MACHINE_TOKEN_LENGTH;
 
 export interface MachineCredentialRecord {
   createdAt: string;
@@ -27,6 +30,7 @@ export interface MachinePrincipal {
 
 export interface CreateMachineCredentialOptions {
   credentialId: string;
+  entropySource?: MachineEntropySource;
   expiresAt: string;
   name: string;
   notBefore?: string;
@@ -40,10 +44,19 @@ export interface CreatedMachineCredential {
   token: string;
 }
 
+export type MachineEntropySource = (length: number) => Uint8Array;
+
+export type MachineCredentialResolver = (
+  credentialId: string,
+) => MachineCredentialRecord | null | Promise<MachineCredentialRecord | null>;
+
+export type MachineCredentialSource = readonly MachineCredentialRecord[] | MachineCredentialResolver;
+
 export type MachineAuthRejectionReason =
   | "credential_expired"
   | "credential_not_active"
   | "credential_revoked"
+  | "credential_resolution_failed"
   | "digest_mismatch"
   | "token_invalid"
   | "unknown_credential";
@@ -111,7 +124,7 @@ function validLifecycle(
 
 function parseRecord(value: unknown): MachineCredentialRecord {
   if (!isRecord(value)) throw new Error("machine_auth_credentials_invalid");
-  const credentialId = requiredString(value, "credentialId", 80);
+  const credentialId = requiredString(value, "credentialId", MAXIMUM_CREDENTIAL_ID_LENGTH);
   const name = requiredString(value, "name", 120);
   const subject = requiredString(value, "subject", 200);
   const tokenHash = requiredString(value, "tokenHash", 71);
@@ -186,10 +199,14 @@ function safeEqual(left: string, right: string): boolean {
 
 function bearerToken(request: Request): { credentialId: string; token: string } | null {
   const authorization = request.headers.get("Authorization");
-  if (!authorization?.startsWith("Bearer ")) return null;
+  if (!authorization?.startsWith("Bearer ") || authorization.length > MAXIMUM_AUTHORIZATION_LENGTH) {
+    return null;
+  }
   const token = authorization.slice("Bearer ".length);
+  if (token.length > MAXIMUM_MACHINE_TOKEN_LENGTH) return null;
   const match = TOKEN_PATTERN.exec(token);
-  return match?.[1] ? { credentialId: match[1], token } : null;
+  const credentialId = match?.[1];
+  return credentialId && credentialId.length <= MAXIMUM_CREDENTIAL_ID_LENGTH ? { credentialId, token } : null;
 }
 
 async function emitSecurityEvent(
@@ -205,29 +222,67 @@ async function emitSecurityEvent(
 }
 
 function lifecycleRejection(record: MachineCredentialRecord, now: number): MachineAuthRejectionReason | null {
-  if (record.revokedAt) return "credential_revoked";
+  if (record.revokedAt && Date.parse(record.revokedAt) <= now) return "credential_revoked";
   if (record.notBefore && Date.parse(record.notBefore) > now) return "credential_not_active";
   if (Date.parse(record.expiresAt) <= now) return "credential_expired";
   return null;
 }
 
+async function findCredential(
+  credentials: MachineCredentialSource,
+  credentialId: string,
+): Promise<MachineCredentialRecord | null> {
+  if (typeof credentials === "function") {
+    const resolved = await credentials(credentialId);
+    if (resolved === null) return null;
+    const record = parseRecord(resolved);
+    if (record.credentialId !== credentialId) throw new Error("machine_auth_credentials_invalid");
+    return record;
+  }
+  const matching = credentials.filter((credential) => credential.credentialId === credentialId);
+  if (matching.length > 1) throw new Error("machine_auth_credentials_invalid");
+  return matching[0] ? parseRecord(matching[0]) : null;
+}
+
+function authenticationTime(value: number | undefined): number {
+  return value ?? Date.now();
+}
+
 /** Resolves a scoped machine principal from a high-entropy bearer token. */
 export async function resolveMachineBearer(
   request: Request,
-  credentials: readonly MachineCredentialRecord[],
+  credentials: MachineCredentialSource,
   options: ResolveMachineBearerOptions = {},
 ): Promise<MachinePrincipal | null> {
-  const now = options.now ?? Date.now();
   const candidate = bearerToken(request);
-  if (!candidate || !Number.isFinite(now)) {
+  if (!candidate) {
     await emitSecurityEvent(options.onSecurityEvent, {
-      credentialId: candidate?.credentialId ?? "unknown",
+      credentialId: "unknown",
       reason: "token_invalid",
       type: "machine_auth_rejected",
     });
     return null;
   }
-  const record = credentials.find(({ credentialId }) => credentialId === candidate.credentialId);
+  const now = authenticationTime(options.now);
+  if (!Number.isFinite(now)) {
+    await emitSecurityEvent(options.onSecurityEvent, {
+      credentialId: candidate.credentialId,
+      reason: "token_invalid",
+      type: "machine_auth_rejected",
+    });
+    return null;
+  }
+  let record: MachineCredentialRecord | null;
+  try {
+    record = await findCredential(credentials, candidate.credentialId);
+  } catch {
+    await emitSecurityEvent(options.onSecurityEvent, {
+      credentialId: candidate.credentialId,
+      reason: "credential_resolution_failed",
+      type: "machine_auth_rejected",
+    });
+    return null;
+  }
   if (!record) {
     await emitSecurityEvent(options.onSecurityEvent, {
       credentialId: candidate.credentialId,
@@ -270,6 +325,14 @@ export function assertMachineScopes(principal: MachinePrincipal, requiredScopes:
   if (!machineHasScopes(principal, requiredScopes)) throw new Error("machine_auth_scope_required");
 }
 
+function randomBytes(length: number, entropySource: MachineEntropySource | undefined): Uint8Array {
+  const bytes = entropySource ? entropySource(length) : crypto.getRandomValues(new Uint8Array(length));
+  if (!(bytes instanceof Uint8Array) || bytes.length !== length) {
+    throw new Error("machine_auth_entropy_invalid");
+  }
+  return bytes;
+}
+
 /** Creates a credential once. Persist only `record` on the server and deliver `token` to the client secret store. */
 export async function createMachineCredential(
   options: CreateMachineCredentialOptions,
@@ -288,7 +351,104 @@ export async function createMachineCredential(
     tokenHash: `sha256:${"0".repeat(64)}`,
   });
   if (Date.parse(metadata.expiresAt) <= now) throw new Error("machine_auth_credentials_invalid");
-  const secret = crypto.getRandomValues(new Uint8Array(32));
+  const secret = randomBytes(32, options.entropySource);
   const token = `sma_${metadata.credentialId}_${bytesToBase64Url(secret)}`;
   return { record: { ...metadata, tokenHash: await hashMachineToken(token) }, token };
+}
+
+export interface MachineCredentialInventoryItem {
+  createdAt: string;
+  credentialId: string;
+  expiresAt: string;
+  name: string;
+  notBefore?: string;
+  revokedAt?: string;
+  scopes: readonly string[];
+  subject: string;
+}
+
+/** Returns validated metadata that is safe to expose in consumer-owned operator tooling. */
+export function listMachineCredentialInventory(
+  credentials: readonly MachineCredentialRecord[],
+): MachineCredentialInventoryItem[] {
+  return credentials.map((credential) => {
+    const { tokenHash: _tokenHash, ...metadata } = parseRecord(credential);
+    return metadata;
+  });
+}
+
+export interface RevokeMachineCredentialOptions {
+  now?: number;
+}
+
+/** Marks a credential as revoked without deleting its audit-relevant metadata. */
+export function revokeMachineCredential(
+  credential: MachineCredentialRecord,
+  options: RevokeMachineCredentialOptions = {},
+): MachineCredentialRecord {
+  const record = parseRecord(credential);
+  if (record.revokedAt) return record;
+  const now = options.now ?? Date.now();
+  if (!Number.isFinite(now) || now < Date.parse(record.createdAt)) {
+    throw new Error("machine_auth_credentials_invalid");
+  }
+  return parseRecord({ ...record, revokedAt: new Date(now).toISOString() });
+}
+
+export interface RotateMachineCredentialOptions {
+  entropySource?: MachineEntropySource;
+  expiresAt: string;
+  name?: string;
+  newCredentialId: string;
+  notBefore?: string;
+  now?: number;
+  retirePreviousAt: string;
+  scopes?: readonly string[];
+  subject?: string;
+}
+
+export interface RotatedMachineCredential {
+  previousRecord: MachineCredentialRecord;
+  replacement: CreatedMachineCredential;
+}
+
+function replacementOptions(
+  current: MachineCredentialRecord,
+  options: RotateMachineCredentialOptions,
+  now: number,
+): CreateMachineCredentialOptions {
+  const replacement: CreateMachineCredentialOptions = {
+    credentialId: options.newCredentialId,
+    expiresAt: options.expiresAt,
+    name: options.name ?? current.name,
+    now,
+    scopes: options.scopes ?? current.scopes,
+    subject: options.subject ?? current.subject,
+  };
+  if (options.entropySource) replacement.entropySource = options.entropySource;
+  if (options.notBefore) replacement.notBefore = options.notBefore;
+  return replacement;
+}
+
+/**
+ * Creates a replacement credential and explicitly schedules retirement of the previous record.
+ * The replacement token is returned once and must be delivered through a consumer-owned secret store.
+ */
+export async function rotateMachineCredential(
+  credential: MachineCredentialRecord,
+  options: RotateMachineCredentialOptions,
+): Promise<RotatedMachineCredential> {
+  const current = parseRecord(credential);
+  if (current.revokedAt) throw new Error("machine_auth_credentials_invalid");
+  const now = options.now ?? Date.now();
+  if (!Number.isFinite(now) || !validTimestamp(options.retirePreviousAt)) {
+    throw new Error("machine_auth_credentials_invalid");
+  }
+  const retirement = Date.parse(options.retirePreviousAt);
+  if (retirement < now || retirement < Date.parse(current.createdAt)) {
+    throw new Error("machine_auth_credentials_invalid");
+  }
+  const previousRecord = parseRecord({ ...current, revokedAt: options.retirePreviousAt });
+  const replacement = await createMachineCredential(replacementOptions(current, options, now));
+  return { previousRecord, replacement };
 }

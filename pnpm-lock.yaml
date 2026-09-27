@@ -363,6 +363,9 @@ importers:
       "@santi020k/auth-hono":
         specifier: workspace:*
         version: link:../../packages/auth-hono
+      "@santi020k/auth-machine":
+        specifier: workspace:*
+        version: link:../../packages/auth-machine
       hono:
         specifier: "catalog:"
         version: 4.13.9
@@ -483,6 +486,10 @@ importers:
         version: 5.9.3
 
   packages/auth-hono:
+    dependencies:
+      "@santi020k/auth-machine":
+        specifier: workspace:*
+        version: link:../auth-machine
     devDependencies:
       "@arethetypeswrong/cli":
         specifier: "catalog:"

@@ -52,3 +52,23 @@ app.use(
 An absent session receives `401`; an old or malformed `authenticatedAt` receives `403` with
 `recent_authentication_required`. The consumer chooses the step-up method and continues to own authorization and
 recovery policy.
+
+Machine-only routes use a separate middleware and must declare at least one scope:
+
+```ts
+app.use(
+  "/api/reports/*",
+  createRequireHonoMachineAuth({
+    resolveCredential: (context, credentialId) => context.env.CREDENTIALS.findByCredentialId(credentialId),
+    requiredScopes: ["reports:read"],
+    onAuthenticated: (context, principal) => {
+      context.set("machinePrincipal", principal);
+    },
+  }),
+);
+```
+
+Browser sessions never satisfy this middleware. Missing or invalid credentials receive `401`; an authenticated machine
+without every required scope receives `403`. Both responses set `Cache-Control: no-store`. Consumers can replace the
+JSON body through `unauthorizedBody` and `insufficientScopeBody`, but status and security headers remain package-owned,
+and body callbacks never receive the request, raw token, or digest record.
