@@ -4,7 +4,13 @@ on:
   pull_request:
     branches: [main]
     types: [closed]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      bootstrap_missing_packages:
+        description: Publish packages that do not exist yet using the one-time Infisical credential
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -29,7 +35,7 @@ jobs:
         )
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 150
     environment: production
     steps:
       - name: Check out merged main
@@ -37,7 +43,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || 'main' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
@@ -54,9 +60,28 @@ jobs:
       - run: pnpm --filter @santi020k/auth-website exec playwright install --with-deps chromium
       - run: pnpm verify
 
+      - name: Load one-time npm bootstrap credential from Infisical
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap_missing_packages }}
+        uses: Infisical/secrets-action@77ab1f4ccd183a543cb5b42435fbd181189f4995 # v1.0.16
+        with:
+          method: oidc
+          identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+          secret-path: /github/release-package
+
       - name: Validate, publish, verify, and tag every package in dependency order
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: node scripts/release/publish.mjs
+        run: |
+          if [[ "${{ inputs.bootstrap_missing_packages }}" == "true" ]]; then
+            if [[ -z "${NPM_BOOTSTRAP_TOKEN:-}" ]]; then
+              echo "::error::The Infisical NPM_BOOTSTRAP_TOKEN is required for initial publication."
+              exit 1
+            fi
+            node scripts/release/publish.mjs --bootstrap-missing
+          else
+            node scripts/release/publish.mjs
+          fi

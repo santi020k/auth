@@ -47,26 +47,26 @@ plan.
 
 ## Initial npm publication
 
-npm requires a package to exist before a trusted publisher can be attached to it, so the first publication of each of
-the seven unpublished split packages is a manual, one-time exception. Perform it once per new package, in dependency
-order, from the verified merged release commit and with explicit action-time authorization. Do not repeat initial
-publication for `@santi020k/auth-cloudflare`:
+npm requires a package to exist before a trusted publisher can be attached to it. The first publication of an absent
+package therefore uses a one-time granular npm token, but publication still runs only through GitHub Actions:
 
-```sh
-git switch main
-git pull --ff-only
-pnpm --dir packages/auth-migrations publish --access public
-pnpm --dir packages/auth-client publish --access public
-pnpm --dir packages/auth-email-resend publish --access public
-pnpm --dir packages/auth-hono publish --access public
-pnpm --dir packages/auth-machine publish --access public
-pnpm --dir packages/auth-recovery publish --access public
-pnpm --dir packages/auth-testing publish --access public
-```
+1. Create a short-lived granular npm token scoped to `@santi020k`, with publish permission and bypass 2FA. npm cannot
+   select package names that do not exist yet, so the release script narrows actual token use to the seven absent
+   package creations and strips it from every existing-package publish, registry verification, tag, and release step.
+2. Store it as `NPM_BOOTSTRAP_TOKEN` in the Auth Infisical project, `prod` environment, at
+   `/github/release-package`. Never copy it into a GitHub secret or repository file.
+3. From the Actions page, run `Release packages` on `main` with `bootstrap_missing_packages` enabled. The workflow loads
+   the token through the existing least-privileged Infisical OIDC identity, runs the complete repository gate, builds
+   the complete fixed-group plan before mutating npm, uses the token only for absent-package creation, uses OIDC for
+   existing packages, publishes in dependency order, verifies each version, removes the credential from the release
+   process, and creates immutable tags and the GitHub Release.
+4. Configure npm trusted publishing for every newly created package, verify one ordinary workflow release, then delete
+   the Infisical bootstrap secret and revoke the npm token.
 
-Use 2FA for each manual publish. That manual exception is for the initial publication of each package only; every
-later release of that package flows through the automated workflow below. Immediately after the seven new initial
-publications, configure npm trusted publishing for each new package with:
+The release script rejects `--bootstrap-missing` outside an explicit GitHub Actions `workflow_dispatch` on `main`.
+Ordinary merged-release and recovery runs remain token-free and refuse packages that have not completed bootstrap.
+
+Immediately after the new packages exist, configure npm trusted publishing for each one with:
 
 - GitHub owner: `santi020k`
 - Repository: `auth`
@@ -89,14 +89,14 @@ Release, or public artifact.
 
 ## Automated releases
 
-After the trusted publishers exist, merging an exact `release/v<semver>` pull request runs `Release package`. The
+After the trusted publishers exist, merging an exact `release/v<semver>` pull request runs `Release packages`. The
 workflow re-runs the complete repository gate (`pnpm verify`, which includes `check:release`'s metadata, Changesets
 coherence, and pack validation for all eight packages), then runs `node scripts/release/publish.mjs`, which:
 
 1. Re-validates every package's metadata and refuses to continue if any package is still private or the fixed group
    has drifted.
 2. Builds the full publish plan for every package — pack it, compute its tarball integrity, and compare against the
-   npm registry — **before publishing anything**. If any package hasn't had its manual initial publication yet, an
+   npm registry — **before publishing anything**. If any package hasn't completed its Actions-only bootstrap yet, an
    already-published version's integrity doesn't match the commit being released, or registry state cannot be read
    reliably, the whole run fails before a single package is published.
 3. Publishes each pre-validated tarball through npm OIDC, strictly in dependency order, and verifies the registry
