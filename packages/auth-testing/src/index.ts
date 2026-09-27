@@ -196,9 +196,13 @@ export interface ConsumerIsolationFixture {
 }
 
 export interface MachineAuthContractFixtureOptions {
+  activationToken: string;
+  digestMismatchToken: string;
+  expiredToken: string;
   insufficientScopeToken: string;
   origin: string;
   path?: `/${string}`;
+  revokedToken: string;
   unknownCredentialToken: string;
   validToken: string;
 }
@@ -206,20 +210,31 @@ export interface MachineAuthContractFixtureOptions {
 export interface MachineAuthContractRequestFixture {
   expectedStatus: 200 | 401 | 403;
   kind:
+    | "active-at-boundary"
+    | "digest-mismatch"
+    | "expired-credential"
     | "insufficient-scope"
     | "malformed-token"
     | "missing-token"
+    | "not-yet-active"
     | "oversized-token"
+    | "revoked-credential"
     | "unknown-credential"
     | "valid-credential";
+  prerequisite: string;
   request: Request;
 }
 
 export interface MachineAuthContractFixtures {
+  activeAtBoundary: MachineAuthContractRequestFixture;
+  digestMismatch: MachineAuthContractRequestFixture;
+  expiredCredential: MachineAuthContractRequestFixture;
   insufficientScope: MachineAuthContractRequestFixture;
   malformedToken: MachineAuthContractRequestFixture;
   missingToken: MachineAuthContractRequestFixture;
+  notYetActive: MachineAuthContractRequestFixture;
   oversizedToken: MachineAuthContractRequestFixture;
+  revokedCredential: MachineAuthContractRequestFixture;
   unknownCredential: MachineAuthContractRequestFixture;
   validCredential: MachineAuthContractRequestFixture;
 }
@@ -232,30 +247,70 @@ export function createMachineAuthContractFixtures(
   const request = (token?: string) =>
     new Request(url, token === undefined ? undefined : { headers: { Authorization: `Bearer ${token}` } });
   return {
+    activeAtBoundary: {
+      expectedStatus: 200,
+      kind: "active-at-boundary",
+      prerequisite: "Store activationToken and set the authentication clock exactly to its notBefore timestamp.",
+      request: request(options.activationToken),
+    },
+    digestMismatch: {
+      expectedStatus: 401,
+      kind: "digest-mismatch",
+      prerequisite: "Store the credential identifier with a valid digest that does not match digestMismatchToken.",
+      request: request(options.digestMismatchToken),
+    },
+    expiredCredential: {
+      expectedStatus: 401,
+      kind: "expired-credential",
+      prerequisite: "Store expiredToken and set the authentication clock exactly to or after its expiresAt timestamp.",
+      request: request(options.expiredToken),
+    },
     insufficientScope: {
       expectedStatus: 403,
       kind: "insufficient-scope",
+      prerequisite: "Store insufficientScopeToken without at least one scope required by the protected route.",
       request: request(options.insufficientScopeToken),
     },
     malformedToken: {
       expectedStatus: 401,
       kind: "malformed-token",
+      prerequisite: "No credential state is required.",
       request: request("not-a-machine-token"),
     },
-    missingToken: { expectedStatus: 401, kind: "missing-token", request: request() },
+    missingToken: {
+      expectedStatus: 401,
+      kind: "missing-token",
+      prerequisite: "No credential state is required.",
+      request: request(),
+    },
+    notYetActive: {
+      expectedStatus: 401,
+      kind: "not-yet-active",
+      prerequisite: "Store activationToken and set the authentication clock one millisecond before its notBefore.",
+      request: request(options.activationToken),
+    },
     oversizedToken: {
       expectedStatus: 401,
       kind: "oversized-token",
+      prerequisite: "Assert that the consumer resolver and security events never receive the overlong identifier.",
       request: request(`sma_${"a".repeat(81)}_${"A".repeat(43)}`),
+    },
+    revokedCredential: {
+      expectedStatus: 401,
+      kind: "revoked-credential",
+      prerequisite: "Store revokedToken with revokedAt equal to or earlier than the authentication clock.",
+      request: request(options.revokedToken),
     },
     unknownCredential: {
       expectedStatus: 401,
       kind: "unknown-credential",
+      prerequisite: "Return null from the consumer resolver for this validated identifier.",
       request: request(options.unknownCredentialToken),
     },
     validCredential: {
       expectedStatus: 200,
       kind: "valid-credential",
+      prerequisite: "Store validToken as an active credential with every scope required by the route.",
       request: request(options.validToken),
     },
   };

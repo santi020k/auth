@@ -101,8 +101,12 @@ void describe("auth testing utilities", () => {
 
   void it("builds machine-auth request vectors and checks safe failures", async () => {
     const fixtures = createMachineAuthContractFixtures({
+      activationToken: "sma_scheduled_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      digestMismatchToken: "sma_mismatch_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      expiredToken: "sma_expired_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       insufficientScopeToken: "sma_reader_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       origin: "https://api.example.com",
+      revokedToken: "sma_revoked_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       unknownCredentialToken: "sma_unknown_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       validToken: "sma_writer_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     });
@@ -110,6 +114,15 @@ void describe("auth testing utilities", () => {
     assert.equal(fixtures.missingToken.request.headers.get("Authorization"), null);
     assert.match(fixtures.oversizedToken.request.headers.get("Authorization") ?? "", /a{81}/u);
     assert.equal(fixtures.insufficientScope.expectedStatus, 403);
+    assert.equal(fixtures.digestMismatch.expectedStatus, 401);
+    assert.equal(
+      fixtures.notYetActive.request.headers.get("Authorization"),
+      fixtures.activeAtBoundary.request.headers.get("Authorization"),
+    );
+    assert.match(fixtures.notYetActive.prerequisite, /one millisecond before/u);
+    assert.equal(fixtures.activeAtBoundary.expectedStatus, 200);
+    assert.equal(fixtures.expiredCredential.kind, "expired-credential");
+    assert.equal(fixtures.revokedCredential.kind, "revoked-credential");
 
     const safeResponse = Response.json(
       { error: "machine_authentication_required" },

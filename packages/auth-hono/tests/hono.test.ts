@@ -155,11 +155,11 @@ void describe("Hono authentication adapters", () => {
     app.use(
       "/admin",
       createRequireHonoMachineAuth({
-        insufficientScopeBody: (principal) => ({ error: "scope_missing", subject: principal.subject }),
+        insufficientScopeBody: (reason, principal) => ({ error: "scope_missing", reason, subject: principal.subject }),
         now: () => now,
         requiredScopes: ["reports:write"],
         resolveCredential: () => created.record,
-        unauthorizedBody: () => ({ error: "credential_missing" }),
+        unauthorizedBody: (reason) => ({ error: "credential_missing", reason }),
       }),
     );
     app.get("/admin", (context) => context.json({ ok: true }));
@@ -167,7 +167,10 @@ void describe("Hono authentication adapters", () => {
     const unauthorized = await app.request("https://example.com/admin");
     assert.equal(unauthorized.status, 401);
     assert.equal(unauthorized.headers.get("Cache-Control"), "no-store");
-    assert.deepEqual(await unauthorized.json(), { error: "credential_missing" });
+    assert.deepEqual(await unauthorized.json(), {
+      error: "credential_missing",
+      reason: "machine_authentication_required",
+    });
 
     const forbidden = await app.request("https://example.com/admin", {
       headers: { Authorization: `Bearer ${created.token}` },
@@ -175,7 +178,11 @@ void describe("Hono authentication adapters", () => {
     assert.equal(forbidden.status, 403);
     assert.equal(forbidden.headers.get("Cache-Control"), "no-store");
     const forbiddenBody: unknown = await forbidden.json();
-    assert.deepEqual(forbiddenBody, { error: "scope_missing", subject: "machine:reporter" });
+    assert.deepEqual(forbiddenBody, {
+      error: "scope_missing",
+      reason: "machine_scope_required",
+      subject: "machine:reporter",
+    });
     assert.equal(JSON.stringify(forbiddenBody).includes(created.token), false);
   });
 
@@ -202,8 +209,33 @@ void describe("Hono authentication adapters", () => {
     assert.deepEqual(await response.json(), { error: "machine_authentication_required" });
   });
 
+  void it("falls back to a protected response when a machine body mapper throws", async () => {
+    const app = new Hono();
+    app.use(
+      "/machine",
+      createRequireHonoMachineAuth({
+        requiredScopes: ["reports:read"],
+        resolveCredential: () => null,
+        unauthorizedBody: () => {
+          throw new Error("consumer mapper failed");
+        },
+      }),
+    );
+    app.get("/machine", (context) => context.json({ ok: true }));
+    const response = await app.request("https://example.com/machine");
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.deepEqual(await response.json(), { error: "machine_authentication_required" });
+  });
+
   void it("rejects missing, duplicate, or malformed machine scope configuration", () => {
-    for (const requiredScopes of [[], ["reports"], ["reports:read", "reports:read"]]) {
+    for (const requiredScopes of [
+      [],
+      ["reports"],
+      ["reports:read", "reports:read"],
+      [`reports:${"a".repeat(120)}`],
+      Array.from({ length: 51 }, (_value, index) => `reports:read_${index}`),
+    ]) {
       assert.throws(
         () => createRequireHonoMachineAuth({ requiredScopes, resolveCredential: () => null }),
         /auth_hono_machine_scopes_invalid/u,

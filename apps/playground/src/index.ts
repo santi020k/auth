@@ -1,7 +1,8 @@
 import { createMultiUserAuth, type MultiUserAuthInstance, normalizeOwnerEmail } from "@santi020k/auth-cloudflare";
 import { createHonoAuthHandler, createRequireHonoMachineAuth } from "@santi020k/auth-hono";
-import { type CreatedMachineCredential, createMachineCredential } from "@santi020k/auth-machine";
 import { type Context, Hono } from "hono";
+
+import { createLocalMachineCredentialProvider } from "./machine.js";
 
 interface Bindings {
   ALLOW_LOCAL_CODE: string;
@@ -20,22 +21,11 @@ interface MailboxRow {
 }
 
 const app = new Hono<{ Bindings: Bindings }>();
-let localMachineCredential: Promise<CreatedMachineCredential> | undefined;
+const getLocalMachineCredential = createLocalMachineCredentialProvider();
 
 function isLocalRequest(request: Request): boolean {
   const hostname = new URL(request.url).hostname;
   return hostname === "127.0.0.1" || hostname === "localhost";
-}
-
-function getLocalMachineCredential(): Promise<CreatedMachineCredential> {
-  localMachineCredential ??= createMachineCredential({
-    credentialId: "local-playground",
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    name: "Local playground client",
-    scopes: ["playground:read"],
-    subject: "machine:local-playground",
-  });
-  return localMachineCredential;
 }
 
 app.get("/api/dev/latest-code", async (context) => {

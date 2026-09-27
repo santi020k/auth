@@ -376,6 +376,9 @@ importers:
       "@playwright/test":
         specifier: "catalog:"
         version: 1.63.0
+      "@types/node":
+        specifier: "catalog:"
+        version: 26.6.2
       esbuild:
         specifier: "catalog:"
         version: 0.28.2

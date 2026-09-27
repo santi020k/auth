@@ -197,6 +197,7 @@ void describe("machine authentication", () => {
       JSON.stringify([{ ...created.record, createdAt: undefined }]),
       JSON.stringify([{ ...created.record, expiresAt: "2026-01-01T00:00:00Z" }]),
       JSON.stringify([{ ...created.record, tokenHash: created.token }]),
+      JSON.stringify([{ ...created.record, scopes: [`reports:${"a".repeat(120)}`] }]),
       JSON.stringify([created.record, { ...created.record, subject: "machine:other" }]),
     ]) {
       assert.throws(() => parseMachineCredentials(value), /machine_auth_credentials_invalid/u);
@@ -228,6 +229,17 @@ void describe("machine authentication", () => {
       },
     ]);
     assert.equal(JSON.stringify(inventory).includes("tokenHash"), false);
+  });
+
+  void it("lets incident response override a scheduled future retirement", async () => {
+    const created = await createMachineCredential(options());
+    const scheduled = { ...created.record, revokedAt: "2026-09-25T01:00:00.000Z" };
+    const revoked = revokeMachineCredential(scheduled, { now: createdAt });
+    assert.equal(revoked.revokedAt, "2026-09-25T00:00:00.000Z");
+    const request = new Request("https://planner.example.com/mcp", {
+      headers: { Authorization: `Bearer ${created.token}` },
+    });
+    assert.equal(await resolveMachineBearer(request, [revoked], { now: createdAt }), null);
   });
 
   void it("rotates with explicit overlap and test-only injected entropy", async () => {
@@ -270,6 +282,15 @@ void describe("machine authentication", () => {
         newCredentialId: "codex-marketing-2",
         now: createdAt,
         retirePreviousAt: "2026-09-24T23:59:59.000Z",
+      }),
+      /machine_auth_credentials_invalid/u,
+    );
+    await assert.rejects(
+      rotateMachineCredential(original.record, {
+        expiresAt: "2027-06-01T00:00:00Z",
+        newCredentialId: original.record.credentialId,
+        now: createdAt,
+        retirePreviousAt: "2026-09-25T00:05:00.000Z",
       }),
       /machine_auth_credentials_invalid/u,
     );

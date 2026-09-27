@@ -67,8 +67,14 @@ export interface HonoMachineAuthErrorBody extends Readonly<Record<string, JsonPr
   readonly error: string;
 }
 
+export type HonoMachineAuthenticationFailureReason = "machine_authentication_required";
+export type HonoMachineAuthorizationFailureReason = "machine_scope_required";
+
 export interface RequireHonoMachineAuthOptions<E extends Env> {
-  insufficientScopeBody?(principal: MachinePrincipal): HonoMachineAuthErrorBody;
+  insufficientScopeBody?: (
+    reason: HonoMachineAuthorizationFailureReason,
+    principal: MachinePrincipal,
+  ) => HonoMachineAuthErrorBody;
   now?: () => number;
   onAuthenticated?(context: Context<E>, principal: MachinePrincipal): void | Promise<void>;
   onSecurityEvent?: MachineAuthEventListener;
@@ -77,10 +83,12 @@ export interface RequireHonoMachineAuthOptions<E extends Env> {
     context: Context<E>,
     credentialId: string,
   ): MachineCredentialRecord | null | Promise<MachineCredentialRecord | null>;
-  unauthorizedBody?(): HonoMachineAuthErrorBody;
+  unauthorizedBody?: (reason: HonoMachineAuthenticationFailureReason) => HonoMachineAuthErrorBody;
 }
 
 const MACHINE_SCOPE_PATTERN = /^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)+$/u;
+const MAXIMUM_MACHINE_SCOPES = 50;
+const MAXIMUM_MACHINE_SCOPE_LENGTH = 120;
 
 function machineAuthJsonResponse(body: HonoMachineAuthErrorBody, status: 401 | 403): Response {
   const fallback = status === 401 ? { error: "machine_authentication_required" } : { error: "machine_scope_required" };
@@ -106,13 +114,39 @@ function machineAuthenticationTime(now: (() => number) | undefined): number | un
   }
 }
 
+function unauthorizedMachineBody(
+  mapper: RequireHonoMachineAuthOptions<Env>["unauthorizedBody"],
+): HonoMachineAuthErrorBody {
+  const fallback = { error: "machine_authentication_required" } as const;
+  try {
+    return mapper?.("machine_authentication_required") ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function insufficientMachineScopeBody(
+  mapper: RequireHonoMachineAuthOptions<Env>["insufficientScopeBody"],
+  principal: MachinePrincipal,
+): HonoMachineAuthErrorBody {
+  const fallback = { error: "machine_scope_required" } as const;
+  try {
+    return mapper?.("machine_scope_required", principal) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Requires a separately resolved machine credential and never falls back to a browser session. */
 export function createRequireHonoMachineAuth<E extends Env>(
   options: RequireHonoMachineAuthOptions<E>,
 ): MiddlewareHandler<E> {
   if (
     options.requiredScopes.length === 0 ||
-    options.requiredScopes.some((scope) => !MACHINE_SCOPE_PATTERN.test(scope)) ||
+    options.requiredScopes.length > MAXIMUM_MACHINE_SCOPES ||
+    options.requiredScopes.some(
+      (scope) => scope.length > MAXIMUM_MACHINE_SCOPE_LENGTH || !MACHINE_SCOPE_PATTERN.test(scope),
+    ) ||
     new Set(options.requiredScopes).size !== options.requiredScopes.length
   ) {
     throw new Error("auth_hono_machine_scopes_invalid");
@@ -128,13 +162,10 @@ export function createRequireHonoMachineAuth<E extends Env>(
       },
     );
     if (!principal) {
-      return machineAuthJsonResponse(options.unauthorizedBody?.() ?? { error: "machine_authentication_required" }, 401);
+      return machineAuthJsonResponse(unauthorizedMachineBody(options.unauthorizedBody), 401);
     }
     if (!machineHasScopes(principal, options.requiredScopes)) {
-      return machineAuthJsonResponse(
-        options.insufficientScopeBody?.(principal) ?? { error: "machine_scope_required" },
-        403,
-      );
+      return machineAuthJsonResponse(insufficientMachineScopeBody(options.insufficientScopeBody, principal), 403);
     }
     await options.onAuthenticated?.(context, principal);
     await next();

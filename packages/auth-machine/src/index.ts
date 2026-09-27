@@ -5,6 +5,7 @@ const TOKEN_PATTERN = /^sma_([a-z0-9]+(?:[._-][a-z0-9]+)*)_([A-Za-z0-9_-]{43})$/
 const HASH_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const MAXIMUM_CREDENTIALS = 100;
 const MAXIMUM_SCOPES = 50;
+const MAXIMUM_SCOPE_LENGTH = 120;
 const MAXIMUM_CREDENTIAL_ID_LENGTH = 80;
 const MAXIMUM_MACHINE_TOKEN_LENGTH = 4 + MAXIMUM_CREDENTIAL_ID_LENGTH + 1 + 43;
 const MAXIMUM_AUTHORIZATION_LENGTH = "Bearer ".length + MAXIMUM_MACHINE_TOKEN_LENGTH;
@@ -102,7 +103,9 @@ function credentialScopes(value: unknown): string[] {
     throw new Error("machine_auth_credentials_invalid");
   }
   const scopes = value.map((scope) => {
-    if (typeof scope !== "string" || !SCOPE_PATTERN.test(scope)) throw new Error("machine_auth_credentials_invalid");
+    if (typeof scope !== "string" || scope.length > MAXIMUM_SCOPE_LENGTH || !SCOPE_PATTERN.test(scope)) {
+      throw new Error("machine_auth_credentials_invalid");
+    }
     return scope;
   });
   if (new Set(scopes).size !== scopes.length) throw new Error("machine_auth_credentials_invalid");
@@ -387,11 +390,11 @@ export function revokeMachineCredential(
   options: RevokeMachineCredentialOptions = {},
 ): MachineCredentialRecord {
   const record = parseRecord(credential);
-  if (record.revokedAt) return record;
   const now = options.now ?? Date.now();
   if (!Number.isFinite(now) || now < Date.parse(record.createdAt)) {
     throw new Error("machine_auth_credentials_invalid");
   }
+  if (record.revokedAt && Date.parse(record.revokedAt) <= now) return record;
   return parseRecord({ ...record, revokedAt: new Date(now).toISOString() });
 }
 
@@ -439,7 +442,9 @@ export async function rotateMachineCredential(
   options: RotateMachineCredentialOptions,
 ): Promise<RotatedMachineCredential> {
   const current = parseRecord(credential);
-  if (current.revokedAt) throw new Error("machine_auth_credentials_invalid");
+  if (current.revokedAt || options.newCredentialId === current.credentialId) {
+    throw new Error("machine_auth_credentials_invalid");
+  }
   const now = options.now ?? Date.now();
   if (!Number.isFinite(now) || !validTimestamp(options.retirePreviousAt)) {
     throw new Error("machine_auth_credentials_invalid");
