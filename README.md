@@ -21,8 +21,8 @@ recovery process, and deployment.
 - `@santi020k/auth-recovery`: subject-scoped, peppered one-time recovery-code issuance and consumption primitives.
 - `@santi020k/auth-testing`: isolated Miniflare D1 fixtures and auth request helpers.
 
-The split packages are prepared for the v0.4.0 public release. The existing `@santi020k/auth-cloudflare` contract and
-its compatibility subpaths remain supported. Sharing a package never creates a shared account system.
+All eight packages were published together in the v0.4.0 public release. The existing `@santi020k/auth-cloudflare`
+contract and its compatibility subpaths remain supported. Sharing a package never creates a shared account system.
 
 The [v0.5.0 release plan](docs/v0.5.0-plan.md) delivers asynchronous machine-credential lookup, scope-enforcing Hono
 middleware, explicit lifecycle helpers, reusable contract fixtures, and a local-only example.
@@ -40,8 +40,8 @@ replace an existing login system until its own migration, compatibility, recover
 
 - Website: [auth.santi020k.com](https://auth.santi020k.com)
 - Source: [github.com/santi020k/auth](https://github.com/santi020k/auth)
-- Existing npm package: [`@santi020k/auth-cloudflare`](https://www.npmjs.com/package/@santi020k/auth-cloudflare)
-- Split-package status: prepared for initial publication with v0.4.0.
+- npm: all eight fixed-group packages listed above are published at v0.4.0.
+- Split-package status: initial publication completed through the v0.4.0 GitHub Actions release.
 
 ## Develop
 
