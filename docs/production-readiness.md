@@ -45,7 +45,7 @@ publishing the fixed release group:
    `pnpm release:pack`.
 3. Preserve the released `@santi020k/auth-cloudflare` compatibility exports and include migration notes for intentional
    experimental `0.x` changes.
-4. Verify npm ownership, the one-time initial-publication order, and trusted-publisher configuration described in
+4. Verify npm ownership, the GitHub Actions-only initial-publication mode, and trusted-publisher configuration described in
    [package releases](releasing.md).
 5. Obtain explicit authorization immediately before the initial npm publications or release workflow changes registry,
    tag, or GitHub Release state.

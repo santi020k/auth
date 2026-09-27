@@ -7,18 +7,24 @@ import { fileURLToPath } from "node:url";
 import { packPackage } from "./lib/pack.mjs";
 import { readWorkspacePackages, topologicalOrder } from "./lib/packages.mjs";
 import {
+  bootstrapContextIssue,
+  captureBootstrapCredential,
   createAndPushTag,
   npmView,
+  planInitialPublication,
   planPublish,
   planTag,
+  publicationEnvironment,
   remoteTagCommit,
   waitForNpmVersion,
 } from "./lib/registry.mjs";
 import { validateFixedGroupCoherence, validatePackageMetadata } from "./lib/validate.mjs";
 
 const dryRun = process.argv.includes("--dry-run");
+const allowInitialPublish = process.argv.includes("--bootstrap-missing");
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const packagesRoot = join(repoRoot, "packages");
+const bootstrapToken = captureBootstrapCredential(process.env);
 
 function log(message) {
   process.stdout.write(`${message}\n`);
@@ -55,10 +61,14 @@ function planPackage(pkg, packDir) {
   const pkgDir = join(packagesRoot, pkg.dir);
   const spec = `${pkg.manifest.name}@${pkg.manifest.version}`;
 
-  if (npmView(pkg.manifest.name, "name") === null) {
+  const initialPublication = planInitialPublication({
+    allowInitialPublish,
+    packageExists: npmView(pkg.manifest.name, "name") !== null,
+  });
+  if (initialPublication === "reject") {
     throw new Error(
-      `${pkg.manifest.name} does not exist on npm yet. Its initial publication must be completed manually ` +
-        "after the production-readiness gate, then this workflow can be rerun to reconcile tags and future OIDC releases.",
+      `${pkg.manifest.name} does not exist on npm yet. Its initial publication must be completed ` +
+        "through the explicitly authorized GitHub Actions bootstrap mode before ordinary OIDC releases can continue.",
     );
   }
 
@@ -78,7 +88,7 @@ function planPackage(pkg, packDir) {
     );
   }
 
-  return { decision, pkg, spec, tarballPath: packed.tarballPath };
+  return { decision, initialPublication, pkg, spec, tarballPath: packed.tarballPath };
 }
 
 function buildPublishPlan(order, packDir) {
@@ -111,6 +121,11 @@ function publishEntry(entry) {
   // the bytes approved above.
   const publishResult = spawnSync("pnpm", ["publish", entry.tarballPath, "--access", "public", "--no-git-checks"], {
     cwd: repoRoot,
+    env: publicationEnvironment({
+      bootstrapToken,
+      environment: process.env,
+      initialPublication: entry.initialPublication,
+    }),
     stdio: "inherit",
   });
   if (publishResult.status !== 0) {
@@ -188,6 +203,15 @@ function writeSummary(releaseCommit, plan) {
 }
 
 function run() {
+  const contextIssue = bootstrapContextIssue({
+    allowInitialPublish,
+    dryRun,
+    eventName: process.env.GITHUB_EVENT_NAME ?? "",
+    githubActions: process.env.GITHUB_ACTIONS ?? "",
+    ref: process.env.GITHUB_REF ?? "",
+  });
+  if (contextIssue) throw new Error(contextIssue);
+
   const order = loadReleasableOrder();
   const version = order[0].manifest.version;
   checkReleaseBranch(version);
