@@ -449,8 +449,9 @@ export async function rotateMachineCredential(
   if (!Number.isFinite(now) || !validTimestamp(options.retirePreviousAt)) {
     throw new Error("machine_auth_credentials_invalid");
   }
+  const created = Date.parse(current.createdAt);
   const retirement = Date.parse(options.retirePreviousAt);
-  if (retirement < now || retirement < Date.parse(current.createdAt)) {
+  if (now < created || retirement < now || retirement < created) {
     throw new Error("machine_auth_credentials_invalid");
   }
   const previousRecord = parseRecord({ ...current, revokedAt: options.retirePreviousAt });

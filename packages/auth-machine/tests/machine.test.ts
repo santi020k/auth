@@ -280,6 +280,15 @@ void describe("machine authentication", () => {
       rotateMachineCredential(original.record, {
         expiresAt: "2027-06-01T00:00:00Z",
         newCredentialId: "codex-marketing-2",
+        now: createdAt - 1,
+        retirePreviousAt: "2026-09-25T00:05:00.000Z",
+      }),
+      /machine_auth_credentials_invalid/u,
+    );
+    await assert.rejects(
+      rotateMachineCredential(original.record, {
+        expiresAt: "2027-06-01T00:00:00Z",
+        newCredentialId: "codex-marketing-2",
         now: createdAt,
         retirePreviousAt: "2026-09-24T23:59:59.000Z",
       }),
