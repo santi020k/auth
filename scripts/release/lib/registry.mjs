@@ -6,6 +6,39 @@ export function planPublish({ localIntegrity, registryVersionExists, registryInt
   return "error-mismatch";
 }
 
+export function planInitialPublication({ allowInitialPublish, packageExists }) {
+  if (packageExists) return "existing";
+  return allowInitialPublish ? "bootstrap" : "reject";
+}
+
+export function bootstrapContextIssue({ allowInitialPublish, dryRun, eventName, githubActions, ref }) {
+  if (!allowInitialPublish || dryRun) return null;
+  if (githubActions === "true" && eventName === "workflow_dispatch" && ref === "refs/heads/main") return null;
+  return "Initial publication is allowed only by an explicit GitHub Actions workflow_dispatch on main.";
+}
+
+export function captureBootstrapCredential(environment) {
+  const bootstrapToken = environment.NPM_BOOTSTRAP_TOKEN;
+  delete environment.NPM_BOOTSTRAP_TOKEN;
+  delete environment.NODE_AUTH_TOKEN;
+  return bootstrapToken;
+}
+
+export function publicationEnvironment({ bootstrapToken, environment, initialPublication }) {
+  const sanitized = { ...environment };
+  delete sanitized.NPM_BOOTSTRAP_TOKEN;
+  delete sanitized.NODE_AUTH_TOKEN;
+
+  if (initialPublication === "bootstrap") {
+    if (!bootstrapToken) throw new Error("The npm bootstrap credential is required for initial publication.");
+    delete sanitized.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+    delete sanitized.ACTIONS_ID_TOKEN_REQUEST_URL;
+    sanitized.NODE_AUTH_TOKEN = bootstrapToken;
+  }
+
+  return sanitized;
+}
+
 export function planTag({ tagExists, remoteCommit, releaseCommit }) {
   if (!tagExists) return "create";
   if (remoteCommit === releaseCommit) return "already-correct";
