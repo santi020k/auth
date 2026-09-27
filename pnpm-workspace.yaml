@@ -43,7 +43,7 @@ catalog:
   prettier-plugin-astro: 1.1.0
   publint: 0.3.24
   # TypeScript 6+ removes APIs still required by the current owned ESLint and Astro toolchain.
-  typescript: 5.9.3
+  typescript: 7.0.2
   wrangler: 4.141.0
 
 minimumReleaseAgeExclude:
