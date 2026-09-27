@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  assertMachineAuthFailureIsSafe,
   createAuthContractFixtures,
   createAuthD1TestHarness,
   createAuthJsonRequest,
   createAuthTestClock,
   createConsumerIsolationFixtures,
+  createMachineAuthContractFixtures,
   createWebAuthnBoundaryFixtures,
   readResponseCookie,
 } from "../src/index.js";
@@ -95,6 +97,49 @@ void describe("auth testing utilities", () => {
     assert.deepEqual(second, { cookiePrefix: "consumer-test-b", tablePrefix: "consumer_test_b" });
     assert.notEqual(first.cookiePrefix, second.cookiePrefix);
     assert.notEqual(first.tablePrefix, second.tablePrefix);
+  });
+
+  void it("builds machine-auth request vectors and checks safe failures", async () => {
+    const fixtures = createMachineAuthContractFixtures({
+      activationToken: "sma_scheduled_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      digestMismatchToken: "sma_mismatch_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      expiredToken: "sma_expired_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      insufficientScopeToken: "sma_reader_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      origin: "https://api.example.com",
+      revokedToken: "sma_revoked_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      unknownCredentialToken: "sma_unknown_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      validToken: "sma_writer_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
+    assert.equal(fixtures.validCredential.expectedStatus, 200);
+    assert.equal(fixtures.missingToken.request.headers.get("Authorization"), null);
+    assert.match(fixtures.oversizedToken.request.headers.get("Authorization") ?? "", /a{81}/u);
+    assert.equal(fixtures.insufficientScope.expectedStatus, 403);
+    assert.equal(fixtures.digestMismatch.expectedStatus, 401);
+    assert.equal(
+      fixtures.notYetActive.request.headers.get("Authorization"),
+      fixtures.activeAtBoundary.request.headers.get("Authorization"),
+    );
+    assert.match(fixtures.notYetActive.prerequisite, /one millisecond before/u);
+    assert.equal(fixtures.activeAtBoundary.expectedStatus, 200);
+    assert.equal(fixtures.expiredCredential.kind, "expired-credential");
+    assert.equal(fixtures.revokedCredential.kind, "revoked-credential");
+
+    const safeResponse = Response.json(
+      { error: "machine_authentication_required" },
+      { headers: { "Cache-Control": "no-store" }, status: 401 },
+    );
+    await assertMachineAuthFailureIsSafe(safeResponse, ["sma_secret"]);
+    await assert.rejects(
+      assertMachineAuthFailureIsSafe(
+        Response.json({ error: "sma_secret" }, { headers: { "Cache-Control": "no-store" }, status: 401 }),
+        ["sma_secret"],
+      ),
+      /auth_test_machine_failure_secret_leaked/u,
+    );
+    await assert.rejects(
+      assertMachineAuthFailureIsSafe(Response.json({ error: "unsafe" }, { status: 401 }), []),
+      /auth_test_machine_failure_cache_invalid/u,
+    );
   });
 
   void it("provides a deterministic clock for expiry contracts", () => {

@@ -18,6 +18,35 @@ test("registers a passkey and signs back in with it", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle("santi020k auth playground");
 
+    const browserSessionOnly = await page.request.get("/api/dev/machine", {
+      headers: { Cookie: "session=valid" },
+    });
+    expect(browserSessionOnly.status()).toBe(401);
+    expect(browserSessionOnly.headers()["cache-control"]).toBe("no-store");
+
+    const tokenResponse = await page.request.get("/api/dev/machine-token");
+    expect(tokenResponse.status()).toBe(200);
+    const tokenBody: unknown = await tokenResponse.json();
+    expect(tokenBody).toEqual({ token: expect.stringMatching(/^sma_local-playground_/u) });
+    if (
+      typeof tokenBody !== "object" ||
+      tokenBody === null ||
+      !("token" in tokenBody) ||
+      typeof tokenBody.token !== "string"
+    ) {
+      throw new Error("playground_machine_token_invalid");
+    }
+    const machineResponse = await page.request.get("/api/dev/machine", {
+      headers: { Authorization: `Bearer ${tokenBody.token}` },
+    });
+    expect(machineResponse.status()).toBe(200);
+    expect(await machineResponse.json()).toEqual({ message: "machine credential accepted" });
+    const browserSessionResponse = await page.request.get("/api/session", {
+      headers: { Authorization: `Bearer ${tokenBody.token}` },
+    });
+    expect(browserSessionResponse.status()).toBe(200);
+    expect(await browserSessionResponse.json()).toBeNull();
+
     await page.getByRole("button", { name: "Generate local code" }).click();
     await expect(page.locator("#status")).toHaveText("Code generated locally and filled in.");
 

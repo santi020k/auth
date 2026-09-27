@@ -1,5 +1,16 @@
 # @santi020k/auth-testing
 
+## 0.5.0
+
+### Minor Changes
+
+- Make machine credentials production-ready with bounded asynchronous resolution, explicit rotation and revocation
+  helpers, scope-enforcing Hono middleware, reusable security contract fixtures, and a localhost-only playground example.
+
+### Patch Changes
+
+- @santi020k/auth-migrations@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

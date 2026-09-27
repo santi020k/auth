@@ -195,6 +195,148 @@ export interface ConsumerIsolationFixture {
   tablePrefix: string;
 }
 
+export interface MachineAuthContractFixtureOptions {
+  activationToken: string;
+  digestMismatchToken: string;
+  expiredToken: string;
+  insufficientScopeToken: string;
+  origin: string;
+  path?: `/${string}`;
+  revokedToken: string;
+  unknownCredentialToken: string;
+  validToken: string;
+}
+
+export interface MachineAuthContractRequestFixture {
+  expectedStatus: 200 | 401 | 403;
+  kind:
+    | "active-at-boundary"
+    | "digest-mismatch"
+    | "expired-credential"
+    | "insufficient-scope"
+    | "malformed-token"
+    | "missing-token"
+    | "not-yet-active"
+    | "oversized-token"
+    | "revoked-credential"
+    | "unknown-credential"
+    | "valid-credential";
+  prerequisite: string;
+  request: Request;
+}
+
+export interface MachineAuthContractFixtures {
+  activeAtBoundary: MachineAuthContractRequestFixture;
+  digestMismatch: MachineAuthContractRequestFixture;
+  expiredCredential: MachineAuthContractRequestFixture;
+  insufficientScope: MachineAuthContractRequestFixture;
+  malformedToken: MachineAuthContractRequestFixture;
+  missingToken: MachineAuthContractRequestFixture;
+  notYetActive: MachineAuthContractRequestFixture;
+  oversizedToken: MachineAuthContractRequestFixture;
+  revokedCredential: MachineAuthContractRequestFixture;
+  unknownCredential: MachineAuthContractRequestFixture;
+  validCredential: MachineAuthContractRequestFixture;
+}
+
+/** Canonical request vectors for a consumer route protected exclusively by machine credentials. */
+export function createMachineAuthContractFixtures(
+  options: MachineAuthContractFixtureOptions,
+): MachineAuthContractFixtures {
+  const url = new URL(options.path ?? "/machine", options.origin);
+  const request = (token?: string) =>
+    new Request(url, token === undefined ? undefined : { headers: { Authorization: `Bearer ${token}` } });
+  return {
+    activeAtBoundary: {
+      expectedStatus: 200,
+      kind: "active-at-boundary",
+      prerequisite: "Store activationToken and set the authentication clock exactly to its notBefore timestamp.",
+      request: request(options.activationToken),
+    },
+    digestMismatch: {
+      expectedStatus: 401,
+      kind: "digest-mismatch",
+      prerequisite: "Store the credential identifier with a valid digest that does not match digestMismatchToken.",
+      request: request(options.digestMismatchToken),
+    },
+    expiredCredential: {
+      expectedStatus: 401,
+      kind: "expired-credential",
+      prerequisite: "Store expiredToken and set the authentication clock exactly to or after its expiresAt timestamp.",
+      request: request(options.expiredToken),
+    },
+    insufficientScope: {
+      expectedStatus: 403,
+      kind: "insufficient-scope",
+      prerequisite: "Store insufficientScopeToken without at least one scope required by the protected route.",
+      request: request(options.insufficientScopeToken),
+    },
+    malformedToken: {
+      expectedStatus: 401,
+      kind: "malformed-token",
+      prerequisite: "No credential state is required.",
+      request: request("not-a-machine-token"),
+    },
+    missingToken: {
+      expectedStatus: 401,
+      kind: "missing-token",
+      prerequisite: "No credential state is required.",
+      request: request(),
+    },
+    notYetActive: {
+      expectedStatus: 401,
+      kind: "not-yet-active",
+      prerequisite: "Store activationToken and set the authentication clock one millisecond before its notBefore.",
+      request: request(options.activationToken),
+    },
+    oversizedToken: {
+      expectedStatus: 401,
+      kind: "oversized-token",
+      prerequisite: "Assert that the consumer resolver and security events never receive the overlong identifier.",
+      request: request(`sma_${"a".repeat(81)}_${"A".repeat(43)}`),
+    },
+    revokedCredential: {
+      expectedStatus: 401,
+      kind: "revoked-credential",
+      prerequisite: "Store revokedToken with revokedAt equal to or earlier than the authentication clock.",
+      request: request(options.revokedToken),
+    },
+    unknownCredential: {
+      expectedStatus: 401,
+      kind: "unknown-credential",
+      prerequisite: "Return null from the consumer resolver for this validated identifier.",
+      request: request(options.unknownCredentialToken),
+    },
+    validCredential: {
+      expectedStatus: 200,
+      kind: "valid-credential",
+      prerequisite: "Store validToken as an active credential with every scope required by the route.",
+      request: request(options.validToken),
+    },
+  };
+}
+
+/** Proves that an authentication failure is non-cacheable and does not echo supplied secrets. */
+export async function assertMachineAuthFailureIsSafe(
+  response: Response,
+  sensitiveValues: readonly string[],
+): Promise<void> {
+  if (response.status !== 401 && response.status !== 403) {
+    throw new Error("auth_test_machine_failure_status_invalid");
+  }
+  if (response.headers.get("Cache-Control") !== "no-store") {
+    throw new Error("auth_test_machine_failure_cache_invalid");
+  }
+  const headerLines: string[] = [];
+  response.headers.forEach((value, key) => {
+    headerLines.push(`${key}:${value}`);
+  });
+  const evidence = `${headerLines.join("\n")}\n${await response.clone().text()}`;
+  if (sensitiveValues.some((value) => value.length > 0 && evidence.includes(value))) {
+    throw new Error("auth_test_machine_failure_secret_leaked");
+  }
+}
+
 /** Distinct deterministic namespaces for proving that two consumers do not share auth state. */
 export function createConsumerIsolationFixtures(
   seed = "fixture",

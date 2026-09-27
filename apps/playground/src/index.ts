@@ -1,6 +1,8 @@
 import { createMultiUserAuth, type MultiUserAuthInstance, normalizeOwnerEmail } from "@santi020k/auth-cloudflare";
-import { createHonoAuthHandler } from "@santi020k/auth-hono";
+import { createHonoAuthHandler, createRequireHonoMachineAuth } from "@santi020k/auth-hono";
 import { type Context, Hono } from "hono";
+
+import { createLocalMachineCredentialProvider } from "./machine.js";
 
 interface Bindings {
   ALLOW_LOCAL_CODE: string;
@@ -19,6 +21,7 @@ interface MailboxRow {
 }
 
 const app = new Hono<{ Bindings: Bindings }>();
+const getLocalMachineCredential = createLocalMachineCredentialProvider();
 
 function isLocalRequest(request: Request): boolean {
   const hostname = new URL(request.url).hostname;
@@ -43,6 +46,29 @@ app.post("/api/dev/revoke-owner", async (context) => {
     .run();
   return context.json({ success: true }, 200, { "Cache-Control": "no-store" });
 });
+
+app.get("/api/dev/machine-token", async (context) => {
+  if (context.env.ALLOW_LOCAL_CODE !== "true" || !isLocalRequest(context.req.raw)) return context.notFound();
+  const credential = await getLocalMachineCredential();
+  return context.json({ token: credential.token }, 200, { "Cache-Control": "no-store" });
+});
+
+app.use(
+  "/api/dev/machine",
+  createRequireHonoMachineAuth<{ Bindings: Bindings }>({
+    requiredScopes: ["playground:read"],
+    resolveCredential: async (context, credentialId) => {
+      if (context.env.ALLOW_LOCAL_CODE !== "true" || !isLocalRequest(context.req.raw)) return null;
+      const record = (await getLocalMachineCredential()).record;
+      return record.credentialId === credentialId ? record : null;
+    },
+  }),
+);
+function machineSuccessResponse(context: Context<{ Bindings: Bindings }>): Response {
+  return context.json({ message: "machine credential accepted" }, 200, { "Cache-Control": "no-store" });
+}
+
+app.get("/api/dev/machine", machineSuccessResponse);
 
 async function authorizePlaygroundEmail(context: Context<{ Bindings: Bindings }>, email: string): Promise<boolean> {
   if (normalizeOwnerEmail(email) !== normalizeOwnerEmail(context.env.OWNER_EMAIL)) return false;

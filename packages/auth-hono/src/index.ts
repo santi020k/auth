@@ -1,3 +1,10 @@
+import {
+  type MachineAuthEventListener,
+  type MachineCredentialRecord,
+  machineHasScopes,
+  type MachinePrincipal,
+  resolveMachineBearer,
+} from "@santi020k/auth-machine";
 import type { Context, Env, Handler, MiddlewareHandler } from "hono";
 
 const DEFAULT_CORS_HEADERS = ["Content-Type"] as const;
@@ -51,6 +58,116 @@ export function createRequireHonoAuth<E extends Env, TIdentity extends AuthSessi
       return context.json({ error: "authentication_required" }, 401);
     }
     await options.onAuthenticated?.(context, identity);
+    await next();
+  };
+}
+
+type JsonPrimitive = boolean | null | number | string;
+export interface HonoMachineAuthErrorBody extends Readonly<Record<string, JsonPrimitive | readonly JsonPrimitive[]>> {
+  readonly error: string;
+}
+
+export type HonoMachineAuthenticationFailureReason = "machine_authentication_required";
+export type HonoMachineAuthorizationFailureReason = "machine_scope_required";
+
+export interface RequireHonoMachineAuthOptions<E extends Env> {
+  insufficientScopeBody?: (
+    reason: HonoMachineAuthorizationFailureReason,
+    principal: MachinePrincipal,
+  ) => HonoMachineAuthErrorBody;
+  now?: () => number;
+  onAuthenticated?(context: Context<E>, principal: MachinePrincipal): void | Promise<void>;
+  onSecurityEvent?: MachineAuthEventListener;
+  requiredScopes: readonly string[];
+  resolveCredential(
+    context: Context<E>,
+    credentialId: string,
+  ): MachineCredentialRecord | null | Promise<MachineCredentialRecord | null>;
+  unauthorizedBody?: (reason: HonoMachineAuthenticationFailureReason) => HonoMachineAuthErrorBody;
+}
+
+const MACHINE_SCOPE_PATTERN = /^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)+$/u;
+const MAXIMUM_MACHINE_SCOPES = 50;
+const MAXIMUM_MACHINE_SCOPE_LENGTH = 120;
+
+function machineAuthJsonResponse(body: HonoMachineAuthErrorBody, status: 401 | 403): Response {
+  const fallback = status === 401 ? { error: "machine_authentication_required" } : { error: "machine_scope_required" };
+  let payload: string;
+  try {
+    const encoded = JSON.stringify(body);
+    payload = typeof encoded === "string" ? encoded : JSON.stringify(fallback);
+  } catch {
+    payload = JSON.stringify(fallback);
+  }
+  return new Response(payload, {
+    headers: { "Cache-Control": "no-store", "Content-Type": "application/json; charset=UTF-8" },
+    status,
+  });
+}
+
+function machineAuthenticationTime(now: (() => number) | undefined): number | undefined {
+  if (!now) return undefined;
+  try {
+    return now();
+  } catch {
+    return Number.NaN;
+  }
+}
+
+function unauthorizedMachineBody(
+  mapper: RequireHonoMachineAuthOptions<Env>["unauthorizedBody"],
+): HonoMachineAuthErrorBody {
+  const fallback = { error: "machine_authentication_required" } as const;
+  try {
+    return mapper?.("machine_authentication_required") ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function insufficientMachineScopeBody(
+  mapper: RequireHonoMachineAuthOptions<Env>["insufficientScopeBody"],
+  principal: MachinePrincipal,
+): HonoMachineAuthErrorBody {
+  const fallback = { error: "machine_scope_required" } as const;
+  try {
+    return mapper?.("machine_scope_required", principal) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Requires a separately resolved machine credential and never falls back to a browser session. */
+export function createRequireHonoMachineAuth<E extends Env>(
+  options: RequireHonoMachineAuthOptions<E>,
+): MiddlewareHandler<E> {
+  if (
+    options.requiredScopes.length === 0 ||
+    options.requiredScopes.length > MAXIMUM_MACHINE_SCOPES ||
+    options.requiredScopes.some(
+      (scope) => scope.length > MAXIMUM_MACHINE_SCOPE_LENGTH || !MACHINE_SCOPE_PATTERN.test(scope),
+    ) ||
+    new Set(options.requiredScopes).size !== options.requiredScopes.length
+  ) {
+    throw new Error("auth_hono_machine_scopes_invalid");
+  }
+  return async (context, next) => {
+    const now = machineAuthenticationTime(options.now);
+    const principal = await resolveMachineBearer(
+      context.req.raw,
+      (credentialId) => options.resolveCredential(context, credentialId),
+      {
+        ...(now === undefined ? {} : { now }),
+        ...(options.onSecurityEvent ? { onSecurityEvent: options.onSecurityEvent } : {}),
+      },
+    );
+    if (!principal) {
+      return machineAuthJsonResponse(unauthorizedMachineBody(options.unauthorizedBody), 401);
+    }
+    if (!machineHasScopes(principal, options.requiredScopes)) {
+      return machineAuthJsonResponse(insufficientMachineScopeBody(options.insufficientScopeBody, principal), 403);
+    }
+    await options.onAuthenticated?.(context, principal);
     await next();
   };
 }

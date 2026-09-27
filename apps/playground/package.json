@@ -10,6 +10,7 @@
     "db:apply": "wrangler d1 migrations apply auth-playground-development --local",
     "dev": "pnpm run build:client && wrangler dev --port 8793",
     "lint": "eslint src --max-warnings=0",
+    "test": "tsc -p tsconfig.unit.json && node --test dist-test/tests/machine.test.js",
     "test:e2e": "playwright test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -17,11 +18,13 @@
     "@santi020k/auth-client": "workspace:*",
     "@santi020k/auth-cloudflare": "workspace:*",
     "@santi020k/auth-hono": "workspace:*",
+    "@santi020k/auth-machine": "workspace:*",
     "hono": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
     "esbuild": "catalog:",
     "typescript": "catalog:",
     "wrangler": "catalog:"
