@@ -37,11 +37,15 @@
     "release:version": "changeset version && pnpm install --lockfile-only",
     "release:pack": "pnpm --filter './packages/*' pack --dry-run",
     "release:publish": "node scripts/release/publish.mjs",
-    "test": "pnpm --recursive --if-present run test",
+    "test": "pnpm --recursive --if-present run test && pnpm run test:ci",
     "test:e2e": "pnpm --filter @santi020k/auth-playground run test:e2e && pnpm --filter @santi020k/auth-website run test:e2e",
     "typecheck": "pnpm --recursive --if-present run typecheck",
     "verify": "pnpm --filter './packages/*' run build && pnpm run format:check && pnpm run lint && pnpm run build && pnpm run check:seo && pnpm run typecheck && pnpm run test && pnpm run test:e2e && pnpm run check:package && pnpm run check:release && pnpm run check:security",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "ci:plan": "node scripts/ci-affected.mjs --plan",
+    "ci:check": "node scripts/ci-affected.mjs",
+    "ci:compat": "node scripts/ci-affected.mjs --compatibility",
+    "test:ci": "node --test scripts/ci-affected.test.mjs"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",

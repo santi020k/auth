@@ -87,7 +87,8 @@ pnpm verify
 integration tests, desktop and mobile website E2E/accessibility behavior, package exports, and production dependency
 advisories. The website build also generates its deterministic social card with `@santi020k/og`; verification checks
 that image for freshness and audits the built canonical, robots, Open Graph, X, structured-data, sitemap, and asset
-contracts. CI runs the same Quality task. CodeQL and dependency review are ready to activate when the repository is
+contracts. CI uses [affected application checks](docs/affected-ci.md) for ordinary app-only pull requests and the
+complete gate for package changes and releases. CodeQL and dependency review are ready to activate when the repository is
 public or its GitHub plan supports Advanced Security for private repositories.
 
 See [production readiness](docs/production-readiness.md) for the exact evidence required before deploying the website or

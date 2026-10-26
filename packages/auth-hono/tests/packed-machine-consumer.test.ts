@@ -42,7 +42,7 @@ void describe("packed machine-auth consumer", () => {
       );
       await execFileAsync(
         "npm",
-        ["install", "--ignore-scripts", "--no-audit", "--no-fund", machineTarball, honoTarball, "hono@4.13.9"],
+        ["install", "--ignore-scripts", "--no-audit", "--no-fund", machineTarball, honoTarball, "hono@4.13.14"],
         { cwd: temporaryDirectory },
       );
       await writeFile(
