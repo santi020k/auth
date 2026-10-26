@@ -1,5 +1,11 @@
 # @santi020k/auth-cloudflare
 
+## 0.5.1
+
+### Patch Changes
+
+- Keep ordinary application-only CI changes scoped with pnpm filters while preserving complete authentication-package and release validation. Align Better Auth and passkey dependencies at 1.7.13 to fix clean npm consumer resolution, and update compatible Hono and transitive security dependencies.
+
 ## 0.5.0
 
 No changes in this release.

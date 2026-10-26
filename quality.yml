@@ -31,7 +31,7 @@ tasks:
   repository-check:
     name: Repository verification
     command: pnpm
-    args: [run, verify]
+    args: [run, ci:check]
     required: true
     parser: generic
 hooks:

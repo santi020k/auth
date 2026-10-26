@@ -19,6 +19,8 @@ jobs:
     name: Package compatibility · Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      QUALITY_CI_BASE: ${{ github.event.pull_request.base.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -26,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
@@ -35,15 +38,14 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter './packages/*' run build
-      - run: pnpm --filter './packages/*' run typecheck
-      - run: pnpm --filter './packages/*' run test
-      - run: pnpm --filter './packages/*' run check:package
+      - run: pnpm run ci:compat
 
   verify:
     name: Quality and verification
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      QUALITY_CI_BASE: ${{ github.event.pull_request.base.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -57,7 +59,11 @@ jobs:
           node-version: 22.23.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Plan repository checks
+        id: scope
+        run: pnpm run ci:plan
       - run: pnpm --filter @santi020k/auth-website exec playwright install --with-deps chromium
+        if: steps.scope.outputs.browser == 'true'
       - name: Run Quality
         uses: santi020k/quality@3b875dcdba2f06a1cacb7198f2a8da1815d4411e # v1.2.0
         with:

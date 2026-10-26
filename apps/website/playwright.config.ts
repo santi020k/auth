@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const baseURL = `http://127.0.0.1:${process.env.PORT ?? "4393"}`;
+
 export default defineConfig({
   expect: { timeout: 5_000 },
   fullyParallel: true,
@@ -11,7 +13,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   testDir: "tests",
   use: {
-    baseURL: "http://127.0.0.1:4393",
+    baseURL,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
@@ -19,6 +21,6 @@ export default defineConfig({
     command: "node scripts/serve-static.mjs",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    url: "http://127.0.0.1:4393",
+    url: baseURL,
   },
 });
