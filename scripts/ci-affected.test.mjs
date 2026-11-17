@@ -102,3 +102,16 @@ test("Git comparison includes deleted and renamed paths plus local edits under h
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("full verification and deployment reuse already-qualified website output", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.match(manifest.scripts.verify, /pnpm --filter '\.\/packages\/\*' run build/u);
+  assert.match(manifest.scripts.verify, /pnpm --filter '\.\/apps\/\*' --if-present run build/u);
+  assert.ok(!manifest.scripts.verify.includes("pnpm run build"));
+  assert.ok(manifest.scripts.verify.includes("pnpm run test:e2e:built"));
+  assert.ok(manifest.scripts.verify.includes("pnpm run check:security"));
+  const workflow = await readFile(new URL("../.github/workflows/deploy-website.yml", import.meta.url), "utf8");
+  assert.ok(workflow.indexOf("pnpm verify") < workflow.indexOf("exec wrangler deploy"));
+  assert.ok(!workflow.includes("auth-website run deploy"));
+});

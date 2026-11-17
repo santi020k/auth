@@ -123,3 +123,25 @@ pnpm run release:publish -- --dry-run
 ```
 
 This requires every package in the fixed group to be publishable, exactly like the real workflow.
+
+## Quality v2 rollout (v0.6.0)
+
+The next minor release after published v0.5.1 adopts Quality 2.0.0 with an immutable Action pin.
+`quality-impact.json` records a shadow dependency graph alongside the existing application-only classifier.
+Changes to authentication packages, shared configuration, manifests, unknown paths, or unavailable Git history select
+all nodes. Website changes include its package prerequisites and browser consumer; the security node always runs.
+Shadow plans do not execute commands or replace the canonical full release gate.
+
+CI runs planning, repository validation, and Node compatibility independently. The existing `Quality and verification`
+check now requires all three to succeed; skipped or cancelled jobs cannot satisfy it. Deployment remains serialized
+and uses the existing protected production environment and Infisical boundary.
+
+`pnpm verify` builds packages once before checking their consumers, then builds applications only. Website browser
+checks use `test:e2e:built` against that output; the ordinary `test:e2e` command still builds for standalone use.
+The deployment workflow uploads the exact website output verified in the same job through Wrangler without rebuilding
+it after production secrets are loaded. This reuse is confined to one job: a failed-job retry still reruns full verification,
+and there is no cross-run cache, artifact promotion, or change to consumer authentication policy.
+
+Run `QUALITY_BIN=/path/to/quality node --test scripts/quality-impact.test.mjs` for committed-source graph fixtures.
+Before pushing or publishing, run `pnpm check` and the normal release preflight. To recover the previous behavior,
+revert this pipeline change and run the full gate; no data migration, secret rotation, or published tag replacement is needed.

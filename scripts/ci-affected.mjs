@@ -61,7 +61,12 @@ const fullPlan = (reason) => ({
   compatibilityCommands,
 });
 const appCommands = (name) =>
-  ["build", "typecheck", "test", "test:e2e"].map((script) => ["--filter", name, "run", script]);
+  ["build", "typecheck", "test", "test:e2e"].map((script) => [
+    "--filter",
+    name,
+    "run",
+    name === "@santi020k/auth-website" && script === "test:e2e" ? "test:e2e:built" : script,
+  ]);
 const affectedPlan = (selected) => ({
   mode: "affected",
   selected,

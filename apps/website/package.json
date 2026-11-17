@@ -16,7 +16,8 @@
     "preview:test": "node scripts/serve-static.mjs",
     "test": "astro check && node --test scripts/*.test.mjs",
     "test:e2e": "pnpm run build && playwright test",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "test:e2e:built": "playwright test"
   },
   "dependencies": {
     "@astrojs/sitemap": "catalog:",
