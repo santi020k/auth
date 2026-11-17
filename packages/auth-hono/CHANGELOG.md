@@ -1,5 +1,11 @@
 # @santi020k/auth-hono
 
+## 0.6.0
+
+### Patch Changes
+
+- @santi020k/auth-machine@0.6.0
+
 ## 0.5.1
 
 ### Patch Changes

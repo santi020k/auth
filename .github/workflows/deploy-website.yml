@@ -42,6 +42,6 @@ jobs:
           env-slug: prod
           secret-path: /github/deploy-website
       - name: Deploy static website
-        run: pnpm --filter @santi020k/auth-website run deploy
+        run: pnpm --filter @santi020k/auth-website exec wrangler deploy
       - name: Verify production
         run: curl --fail --retry 6 --retry-delay 10 --retry-all-errors https://auth.santi020k.com/

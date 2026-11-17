@@ -1,5 +1,11 @@
 # @santi020k/auth-testing
 
+## 0.6.0
+
+### Patch Changes
+
+- @santi020k/auth-migrations@0.6.0
+
 ## 0.5.1
 
 ### Patch Changes

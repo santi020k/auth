@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "global_inputs": [
+    "quality-impact.json",
+    ".quality-version",
+    "quality.yml",
+    ".github/",
+    "scripts/",
+    "packages/",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "eslint.config.mjs",
+    "apps/website/package.json",
+    "apps/playground/package.json"
+  ],
+  "ignored_inputs": [],
+  "nodes": {
+    "packages": {
+      "inputs": [],
+      "command": "pnpm",
+      "args": ["--filter", "./packages/*", "run", "build"]
+    },
+    "website": {
+      "inputs": ["apps/website/"],
+      "depends_on": ["packages"],
+      "command": "pnpm",
+      "args": ["--filter", "@santi020k/auth-website", "run", "build"]
+    },
+    "website-browser": {
+      "inputs": [],
+      "depends_on": ["website"],
+      "command": "pnpm",
+      "args": ["--filter", "@santi020k/auth-website", "run", "test:e2e:built"]
+    },
+    "playground": {
+      "inputs": ["apps/playground/"],
+      "depends_on": ["packages"],
+      "command": "pnpm",
+      "args": ["--filter", "@santi020k/auth-playground", "run", "test:e2e"]
+    },
+    "security": {
+      "inputs": [],
+      "always": true,
+      "command": "pnpm",
+      "args": ["run", "check:security"]
+    }
+  }
+}

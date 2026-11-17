@@ -1,6 +1,6 @@
 {
   "name": "@santi020k/auth-email-resend",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Redacted Resend delivery and localized login-code templates for Santiago-owned authentication.",
   "license": "MIT",
   "author": {

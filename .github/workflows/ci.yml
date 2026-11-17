@@ -1,3 +1,4 @@
+# cspell:words tlsv
 name: CI
 
 on:
@@ -40,8 +41,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run ci:compat
 
-  verify:
-    name: Quality and verification
+  repository:
+    name: Repository verification
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -65,9 +66,9 @@ jobs:
       - run: pnpm --filter @santi020k/auth-website exec playwright install --with-deps chromium
         if: steps.scope.outputs.browser == 'true'
       - name: Run Quality
-        uses: santi020k/quality@3b875dcdba2f06a1cacb7198f2a8da1815d4411e # v1.2.0
+        uses: santi020k/quality@ff490e9efbd5fdfbdb1e6c404f1741d04c57f585 # v2.0.0
         with:
-          version: v1.2.0
+          version: v2.0.0
           changed-only: false
           fail-level: warning
           report-level: warning
@@ -88,3 +89,60 @@ jobs:
             apps/website/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  impact-plan:
+    name: Quality v2 shadow plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned Quality v2
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/santi020k/quality/ff490e9efbd5fdfbdb1e6c404f1741d04c57f585/install.sh \
+            --output "$RUNNER_TEMP/install-quality.sh"
+          QUALITY_INSTALL_DIR="$RUNNER_TEMP/quality-bin" sh "$RUNNER_TEMP/install-quality.sh" santi020k/quality v2.0.0
+          echo "$RUNNER_TEMP/quality-bin" >> "$GITHUB_PATH"
+      - name: Test the committed impact policy
+        run: node --test scripts/quality-impact.test.mjs
+      - name: Record shadow plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == pull_request && "$HEAD_REF" != release/* && "$HEAD_REF" != changeset-release/* && -n "$BASE_SHA" ]]; then
+            quality impact plan --base "$BASE_SHA" --head HEAD --comparison merge-base --format json > "$RUNNER_TEMP/quality-impact-plan.json"
+          else
+            quality impact plan --full --format json > "$RUNNER_TEMP/quality-impact-plan.json"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-impact-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/quality-impact-plan.json
+          if-no-files-found: error
+          retention-days: 7
+
+  verify:
+    name: Quality and verification
+    if: always()
+    needs: [repository, runtime-compatibility, impact-plan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every selected job to succeed
+        env:
+          REPOSITORY: ${{ needs.repository.result }}
+          COMPATIBILITY: ${{ needs.runtime-compatibility.result }}
+          IMPACT: ${{ needs.impact-plan.result }}
+        run: |
+          for result in "$REPOSITORY" "$COMPATIBILITY" "$IMPACT"; do
+            if [[ "$result" != success ]]; then
+              echo '::error::A required validation job failed, was cancelled, or was skipped.'
+              exit 1
+            fi
+          done
