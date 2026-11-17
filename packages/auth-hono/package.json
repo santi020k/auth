@@ -1,6 +1,6 @@
 {
   "name": "@santi020k/auth-hono",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Hono route and session middleware adapters for Santiago-owned authentication.",
   "license": "MIT",
   "author": {

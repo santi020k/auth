@@ -47,7 +47,7 @@ void describe("packed package consumer", () => {
       await execFileAsync(
         "npm",
         ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarballPath, "hono@4.13.14"],
-        { cwd: temporaryDirectory },
+        { cwd: temporaryDirectory, timeout: 180_000 },
       );
       assert.ok(
         (await readFile(resolve(temporaryDirectory, "node_modules/@cloudflare/workers-types/package.json")))

@@ -145,3 +145,17 @@ and there is no cross-run cache, artifact promotion, or change to consumer authe
 Run `QUALITY_BIN=/path/to/quality node --test scripts/quality-impact.test.mjs` for committed-source graph fixtures.
 Before pushing or publishing, run `pnpm check` and the normal release preflight. To recover the previous behavior,
 revert this pipeline change and run the full gate; no data migration, secret rotation, or published tag replacement is needed.
+
+### Better Auth dependency alignment
+
+This release updates `better-auth` and `@better-auth/passkey` together from 1.7.13 to 1.7.25.
+The [upstream changelog](https://better-auth.com/changelog) records the 1.7.24 fix for conflicting `better-call`
+peer requirements; fresh npm consumers previously entered repeated dependency replacement during installation.
+The existing clean-consumer test still installs the packed public package without workspace overrides and type checks
+all public subpaths. Its installation subprocess now has a three-minute timeout so registry or resolver failures
+stop validation rather than hanging indefinitely.
+
+Reviewed upstream migration notes require no API or D1 schema migration for this repository: passkeys already set an
+explicit origin and relying-party ID, and the repository does not enable OAuth-provider, identity provisioning, or wildcard-origin
+flows. Existing OTP, session, origin, D1, and rendered passkey tests remain required. Consumers still own their
+databases and must validate their own real-origin login before adopting the release.

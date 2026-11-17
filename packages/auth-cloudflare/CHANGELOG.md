@@ -1,5 +1,14 @@
 # @santi020k/auth-cloudflare
 
+## 0.6.0
+
+### Minor Changes
+
+- 5c2d0b8: Adopt Quality v2 impact planning and reuse already-validated builds during verification and website deployment.
+  Authentication package and shared-input changes continue to require full qualification, including fresh security checks.
+
+  Align Better Auth and its passkey plugin on 1.7.25 to fix clean-consumer dependency resolution and include upstream authentication fixes.
+
 ## 0.5.1
 
 ### Patch Changes
