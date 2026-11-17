@@ -35,7 +35,7 @@ catalog:
   cspell: 10.3.4
   esbuild: 0.28.2
   eslint: 10.11.0
-  hono: 4.13.14
+  hono: 4.13.16
   knip: 6.38.0
   lint-staged: 17.5.1
   miniflare: 5.20260923.0-alpha
